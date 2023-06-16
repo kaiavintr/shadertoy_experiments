@@ -636,7 +636,7 @@ vec4 render_stars(vec3 V0, float base_distance, float base_distance2, vec3 P, ve
 
                 float r = length(uv);
 
-                if (r < 1.5) {
+                if (r < 1.5 || c_edge1.a > 0.01) {
                     float mask;
                     
                     {
@@ -661,7 +661,7 @@ vec4 render_stars(vec3 V0, float base_distance, float base_distance2, vec3 P, ve
                             ) * smoothstep(0., 0.15, abs(dotVN) * (1.5 - r));
                     }
                     
-                    if (mask > 0.) {
+                    if (mask > 0. || c_edge1.a > 0.01) {
                         vec3 N;
                         
                         {
@@ -702,29 +702,6 @@ vec4 render_stars(vec3 V0, float base_distance, float base_distance2, vec3 P, ve
                             color = color + (1. - color.a)*c;
                         }
                     }
-                }
-            }
-
-            if (c_edge1.a != 0.) {
-                if (c_edge1.a < 0.995) {
-                    if (edge_dist2-edge_dist1 < 0.01) {
-                        if (c_edge1.a + c_edge2.a <= 1.005) {
-                            c_edge1 += c_edge2;
-                        } else {
-                            c_edge1.rgb += (1. - c_edge1.a) / c_edge2.a * c_edge2.rgb;
-                            c_edge1.a = 1.;
-                        }
-                    } else {
-                        c_edge1 += (1.-c_edge1.a)*c_edge2;
-                    }
-                }
-                
-                if (edge_dist1 < prev_dist) {
-                    color = c_edge1 + (1. - c_edge1.a)*color;
-                    
-                    prev_dist = edge_dist1;
-                } else {
-                    color += (1. - color.a)*c_edge1;
                 }
             }
         }
