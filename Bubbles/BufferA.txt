@@ -1,0 +1,191 @@
+/*
+    Copyright (C) 2023 Kaia Vintr
+    
+    Code is licensed only for personal, non-commercial use on the Shadertoy
+    website. You may not copy all or any part of the code into another Shadertoy
+    shader. You may not distribute or use all or any part of the code outside of
+    the Shadertoy website, even if the code is accessed via the Shadertoy API or
+    web server. You may not use the code or its output to train or fine-tune
+    machine learning models (e.g. "AI" models). You may not use the code to
+    create image or video content for publication or distribution, except
+    screenshots or brief video clips of the output of the unmodified code to be
+    used strictly in a manner that would be permitted as "fair use" under U.S.
+    copyright law (for example, you may not use the code to create NFTs or
+    YouTube videos). If any provision of these license terms is held to be
+    invalid or unenforceable, that provision shall be limited to the minimum
+    extent necessary, and the remaining provisions shall remain in full effect.
+    
+    Please contact the copyright holder with questions or requests regarding
+    licensing, via DM to @KaiaVintr on Twitter or via a comment on this shader.
+    
+    Code is archived at:
+    https://github.com/kaiavintr/shadertoy_experiments/tree/main/Bubbles
+    
+*/
+
+
+#define MAX3(A, B, C) max(max(A, B), C)
+#define MAX6(A, B, C, D, E, F) max(MAX3(A, B, C), MAX3(D, E, F))
+
+#define MIN3(A, B, C) min(min(A, B), C)
+#define MIN6(A, B, C, D, E, F) min(MIN3(A, B, C), MIN3(D, E, F))
+
+
+vec2 plane_bound(vec3 orig, vec3 direction, float radius, vec3 N) {
+    float a = -dot(orig, N);
+    float b = dot(direction, N);
+    
+    if (abs(b) > 0.00001) {
+        float t = (a - radius*sqrt(1. - b*b)) / b;
+
+        return b > 0. ? vec2(t, 1e20) : vec2(-1e20, t);
+    } else {
+        return vec2(-1e10, 1e20);
+    }
+}
+
+uvec4 id_range_for_frustum(vec2 corner, mat3 camera) {
+    float pixel_z = VIEW_ANGLE_FACTOR*iResolution.y;
+    
+    vec3 neighborhood_V;
+    float pix_scale, neighborhood_radius;
+    
+    {
+        vec2 a = corner + 0.5;
+        vec2 b = corner + (BLOCK_SIZE - 0.5);
+        
+        vec2 c = step(0., a*b) * min(a*a, b*b);
+        
+        pix_scale = 1. / sqrt(c.x + c.y + pixel_z*pixel_z);
+        
+        neighborhood_radius = sqrt(2.) * 7.5 * pix_scale;
+
+        neighborhood_V = camera * normalize(vec3(corner + 8., pixel_z));
+    }
+    
+    vec3 N_left = normalize(vec3(pixel_z, 0, -corner.x));
+    vec3 N_right = normalize(vec3(-pixel_z, 0, corner.x + BLOCK_SIZE));
+    vec3 N_bottom = normalize(vec3(0, pixel_z, -corner.y));
+    vec3 N_top = normalize(vec3(0, -pixel_z, corner.y + BLOCK_SIZE));
+    
+    vec3 cyl_origin = PATH_CENTER * camera;
+    vec3 cyl_direction = vec3(1,0,0) * camera;
+    
+    vec2 xrange;
+    
+    {
+        // The "3" is a fudge factor for depth of field blur and anti-aliasing that might not be necessary.
+        float cyl_radius = YZ_SCATTER_RADIUS + YZ_MOVEMENT_RADIUS + RADIUS_MAX + 3.;
+        vec3 N_z = vec3(0,0,1);
+        
+        vec2 bound0 = plane_bound(cyl_origin, cyl_direction, cyl_radius, N_z);
+        vec2 bound1 = plane_bound(cyl_origin, cyl_direction, cyl_radius, N_left);
+        vec2 bound2 = plane_bound(cyl_origin, cyl_direction, cyl_radius, N_right);
+        vec2 bound3 = plane_bound(cyl_origin, cyl_direction, cyl_radius, N_bottom);
+        vec2 bound4 = plane_bound(cyl_origin, cyl_direction, cyl_radius, N_top);
+        vec2 bound5 = plane_bound(cyl_origin - vec3(0,0,DISTANCE_MAX), cyl_direction, cyl_radius, -N_z);
+        
+        xrange = vec2(MAX6(bound0.x, bound1.x, bound2.x, bound3.x, bound4.x, bound5.x),
+                      MIN6(bound0.y, bound1.y, bound2.y, bound3.y, bound4.y, bound5.y));
+    }
+    
+    xrange.r -= RADIUS_MAX;
+    xrange.g += RADIUS_MAX;
+    
+    uint start_id, end_id;
+    
+    {
+        float x_scale = 1. / (SPEED_X * BUBBLE_ID_TIME_INCREMENT);
+        float offset = x_scale*PATH_CENTER.x - TIME / BUBBLE_ID_TIME_INCREMENT;
+        
+        start_id = uint(max(1, int(ceil(x_scale*xrange.r - offset))));
+
+        end_id = uint(max(int(start_id), int(floor(x_scale*xrange.g - offset))));
+    }
+    
+    uint count = end_id - start_id + 1u;
+    
+    vec3 center_ray = camera*vec3(0,0,1);
+    
+    bool reversed = center_ray.x < 0.;
+    
+    if (count > uint(MAX_BUBBLE_COUNT)) {
+        if (reversed) start_id = end_id - uint((MAX_BUBBLE_COUNT - 1));
+        count = uint(MAX_BUBBLE_COUNT);
+    }
+    
+    float focus_distance = get_focus_distance(center_ray);
+
+    uint id_lower_bound = uint(max(0, int(floor(TIME / BUBBLE_ID_TIME_INCREMENT)) - (MAX_BUBBLE_COUNT + 1)));
+    
+    uint id_max = 0u;
+    uvec4 idset = uvec4(0);
+    
+    for (uint i = 0u; i < count; i++) {
+        uint id = reversed ? end_id - i : i + start_id;
+    
+        float fid = float(id);
+        
+        float offset_t = BUBBLE_ID_TIME_INCREMENT*fid - TIME;
+        
+        float x = PATH_CENTER.x + SPEED_X*offset_t;
+
+        float radius = get_radius(fid);
+        
+        uint h;
+        vec3 C = vec3(x, get_bubble_center_yz(offset_t, id, h));
+        
+        float len_c = length(C);
+        
+        float proj_min = dot(neighborhood_V, C) - len_c*neighborhood_radius;
+        float proj_max = dot(neighborhood_V, C) + len_c*neighborhood_radius;
+        
+        
+        float s_max = iResolution.y * (APERTURE * APERTURE_REFERENCE) / proj_min * max(proj_max - focus_distance, focus_distance - proj_min);
+        
+        float margin = -(radius + 0.75 * pix_scale * sqrt(1. + s_max*s_max) * proj_max);
+        
+        C = C * camera;
+        
+        if (C.z >= 0. && C.z <= DISTANCE_MAX
+                    && dot(C, N_left) > margin
+                    && dot(C, N_right) > margin
+                    && dot(C, N_bottom) > margin
+                    && dot(C, N_top) > margin
+                    ) {
+            id -= id_lower_bound;
+            
+            if ((idset.x & 0xffffu) == 0u) {
+                idset = (idset >> 16) | uvec4(idset.yzw << 16, id << 16);
+            } else {
+                id_max = id;
+            }
+        }
+    }
+    
+    if ((idset.w & 0xffff0000u) != 0u) {
+        if (idset.y == 0u) idset = uvec4(idset.zw, 0, 0);
+        if (idset.x == 0u) idset = uvec4(idset.yzw, 0);
+        if ((idset.x & 0xffffu) == 0u) idset = (idset >> 16) | uvec4(idset.yzw << 16, 0);
+        
+        if (id_max != 0u) {
+            uint second_last = idset.w & 0xffffu;
+            
+            idset.w = (reversed ? (id_max | (second_last << 16)) 
+                    : (second_last | (id_max << 16))) | 0x80000000u;
+        }
+    }
+    
+    return idset;
+}
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+    vec2 corner = floor(fragCoord) * BLOCK_SIZE;
+    
+    if (corner.x < iResolution.x && corner.y < iResolution.y) {
+        fragColor = uintBitsToFloat(id_range_for_frustum(corner - 0.5*iResolution.xy, make_camera(iMouse, iResolution)));
+    } else {
+        fragColor = vec4(0);
+    }
+}
+
