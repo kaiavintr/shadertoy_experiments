@@ -1,0 +1,206 @@
+/*
+    Copyright (C) 2023 Kaia Vintr
+    
+    Code is licensed only for personal, non-commercial use on the Shadertoy
+    website. You may not copy all or any part of the code into another Shadertoy
+    shader. You may not distribute or use all or any part of the code outside of
+    the Shadertoy website, even if the code is accessed via the Shadertoy API or
+    web server. You may not use the code or its output to train or fine-tune
+    machine learning models (e.g. "AI" models). You may not use the code to
+    create image or video content for publication or distribution, except
+    screenshots or brief video clips of the output of the unmodified code to be
+    used strictly in a manner that would be permitted as "fair use" under U.S.
+    copyright law (for example, you may not use the code to create NFTs or
+    YouTube videos). If any provision of these license terms is held to be
+    invalid or unenforceable, that provision shall be limited to the minimum
+    extent necessary, and the remaining provisions shall remain in full effect.
+    
+    Please contact the copyright holder with questions or requests regarding
+    licensing, via DM to @KaiaVintr on Twitter or via a comment on this shader.
+    
+    Code is archived at:
+    https://github.com/kaiavintr/shadertoy_experiments/tree/main/Bubbles
+    
+*/
+
+
+// Set this to 1 to use only the extra "HDR" light, not the environment map texture
+#define BLACK_BACKGROUND 0
+
+#define BUBBLE_DENSITY 11
+
+// For default SPEED_X and PATH_CENTER values, this should be >= ~10*BUBBLE_DENSITY to avoid weird clipping.
+// Large values are slow (if bubble density is also high)
+// Values > 16000 or so will probably cause problems (but will be very slow anyway).
+#define MAX_BUBBLE_COUNT 1000
+
+// Normalized so 1 approximately matches the environment map's blur
+// Changing this value will probably make it look less realistic
+// Set to zero to disable depth of field blur completely
+#define APERTURE 1.
+
+// Probably shouldn't be 0 (unless you don't mind if hash(0)=0)
+#define HASH_SEED 0xfb1d484bu
+
+// Bubble radius range
+#define RADIUS_MIN 0.5
+#define RADIUS_MAX 7.
+
+// cycle through different radii in the range, with this cycle length
+#define RADIUS_CYCLE_LENGTH 10.
+
+// Speed of the bubbles in the x direction 
+#define SPEED_X 10.
+
+// Determines the far clip plane for the bubbles
+#define DISTANCE_MAX 1000.
+
+// Offset of the overall path of the bubbles.
+// Some parts of the code assume PATH_CENTER.x is 0
+// (no reason for it not to be 0, since it's an infinite cylinder aligned with the x-axis)
+#define PATH_CENTER vec3(0., 30., 3.)
+
+#define YZ_SCATTER_RADIUS 50.
+#define YZ_MOVEMENT_RADIUS 40.
+
+
+// Parameters determining how the "auto-focus" works
+
+// Size of the bounding cylinder used to determine range of visible bubbles
+#define FOCUS_CYL_RADIUS 90.
+
+// Fraction of distance to edge of bounding cylinder to focus on
+#define FOCUS_FRACTION 0.4
+
+// Bounds on the focus distance
+#define FOCUS_MIN 50.
+#define FOCUS_MAX 150.
+
+
+
+// 1 / tan(0.5*vertical_fov)
+#define VIEW_ANGLE_FACTOR 1.78
+
+#define BLOCK_SIZE 8.
+#define BLOCK_SHIFT 3
+
+// Aperture value roughly matching the background, used to define APERTURE=1
+#define APERTURE_REFERENCE 0.01
+
+
+#define TIME iTime
+
+
+#define BUBBLE_ID_TIME_INCREMENT (1./float(BUBBLE_DENSITY))
+
+#define PI 3.14159265358979
+
+
+
+// Derived by improving a basic LCG hash by trial and error.
+// Caveat: I have not run any standard tests like the TestU01 suite on it (only tested by
+//   displaying XOR and AND of different pairs of output bits as pixels in a shader).
+// Turns out to be similar to CityHash's fmix() function, which unfortunately was
+//   not tested alone in the Jarzynski & Olano paper supplement.
+uint hash_fn1(uint h) {
+
+    // Unnecessary in this shader, since only low bits are used in input
+    // CityHash fmix() uses ^=, but += seems to improve output when low and high bits are identical.
+    //h += h >> 16; 
+    
+    // 0xadb4a92d is one of the multipliers from the Steele & Vigna 2021 paper
+    h = h*0xadb4a92du + HASH_SEED;
+    
+    // If you skip this step, the following multiplication will do nothing to improve the output,
+    //      since the result will be the same as a single multiply and add.
+    // fmix() uses 13. I don't know if it makes a difference.
+    h ^= h >> 16;
+    
+    // I don't know if there is any reason to use a different multiplier here, but I noticed that some
+    //      combinations of different multipliers interact and produce worse results
+    h = h*0xadb4a92du;
+    
+    // If performance is a priority, you may be able to skip this step.
+    return h ^ (h >> 16);
+}
+
+// Used only as a random number generator, for generating more bits from a previously computed hash.
+// I am only calling it once, so cycle length is not a concern.
+// Not recommended as a general-purpose random number generator.
+// Basic MCG, but mixing high bits to low bits to improve output.
+uint hash_fn2(uint h) {
+    // I don't know if there is any reason to use a different multiplier here.
+    // I don't know if adding a constant would help, other than for input 0 (which is not a concern here).
+    h = h*0xadb4a92du;
+    
+    // This step noticeably improves the quality of the output, but may make the code unsuitable for
+    //      use as a general-purpose random number generator by causing short cycles for some starting values.
+    // May not be necessary if performance is a priority.
+    return h ^ (h >> 16);
+}
+
+#define HASH_EXTRACT_VEC4(H) (1./255. * vec4(uvec4((H), (H)>>8, (H)>>16, (H)>>24) & 0xffu))
+#define HASH_EXTRACT_LOW(H) (1./255. * float((H) & 0xffu))
+#define HASH_EXTRACT_FULL(H) (0.00000000023283 * float(H))
+
+vec2 get_bubble_center_yz(float t, uint obj, out uint hash) {
+    uint h = hash_fn1(obj);
+    
+    vec4 g = HASH_EXTRACT_VEC4(h);
+    
+    h = hash_fn2(h);
+    
+    float s = HASH_EXTRACT_LOW(h);
+    
+    float f =  pow(1.5 + g.x + sin((1. + 2.*s)*t), 0.5);
+    float u = 1.*s + 0.1*t + (0.3*g.y)*(t + f);
+    
+    hash = h;
+    
+    // The constant ("scatter") offset is distributed over a square, not a circle, but I think it looks better that way.
+    return PATH_CENTER.yz + (2. * YZ_SCATTER_RADIUS)*g.zw - YZ_SCATTER_RADIUS + YZ_MOVEMENT_RADIUS*vec2(sin(u), cos(u));
+}
+
+mat3 make_camera(vec4 mouse4, vec3 resolution) {
+    vec2 mouse = mouse4.x == 0. && mouse4.y == 0. || mouse4.x > resolution.x || mouse4.y > resolution.y
+            ? vec2(0.835, 0.6)*resolution.xy
+            : mouse4.xy;
+
+    mouse = 2. * (mouse.xy / resolution.xy - 0.5);
+    
+    float xz = PI * mouse.x;
+    float yz = 0.5*PI * min(mouse.y, 0.999);
+    
+    float cos_yz = cos(yz);
+    
+    // (normalize is for precision loss only)
+    vec3 dir_z = normalize(vec3(sin(xz)*cos_yz, sin(yz), cos(xz)*cos_yz));
+    vec3 dir_x = normalize(cross(vec3(0, 1, 0), dir_z));
+
+    return mat3(dir_x, normalize(cross(dir_z, dir_x)), dir_z);
+}
+
+vec2 cyl_intersection(vec2 V) {
+    float t0 = dot(V, PATH_CENTER.yz);
+    float v_scale_sq = 1. / dot(V, V);
+    
+    float t = t0 * v_scale_sq;
+    
+    float disc = FOCUS_CYL_RADIUS*FOCUS_CYL_RADIUS + t*t0 - dot(PATH_CENTER.yz, PATH_CENTER.yz);
+    
+    // if no intersection, return distance to closest approach
+    float b = sqrt(max(disc, 0.) * v_scale_sq);
+    
+    return vec2(t - b, t + b);
+}
+
+float get_focus_distance(vec3 V) {
+    vec2 d = max(cyl_intersection(V.yz), 0.);
+    
+    return abs(V.x) < 0.001 ? FOCUS_MAX : clamp(mix(d.x, d.y, FOCUS_FRACTION), FOCUS_MIN, FOCUS_MAX);
+}
+
+float get_radius(float fid) {
+    // The "- 0.629" makes the cycle slightly longer than RADIUS_CYCLE_LENGTH, so that the fract() parts of the numbers are more varied, and more sizes are visited
+    return mix(RADIUS_MIN, RADIUS_MAX, fract(((RADIUS_CYCLE_LENGTH - 0.629)/(RADIUS_CYCLE_LENGTH*RADIUS_CYCLE_LENGTH))*fid));
+}
