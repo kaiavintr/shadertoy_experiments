@@ -1,0 +1,491 @@
+/*
+    Copyright (C) 2023 Kaia Vintr
+    
+    Code is licensed only for personal, non-commercial use on the Shadertoy
+    website. You may not copy all or any part of the code into another Shadertoy
+    shader. You may not distribute or use all or any part of the code outside of
+    the Shadertoy website, even if the code is accessed via the Shadertoy API or
+    web server. You may not use the code or its output to train or fine-tune
+    machine learning models (e.g. "AI" models). You may not use the code to
+    create image or video content for publication or distribution, except
+    screenshots or brief video clips of the output of the unmodified code to be
+    used strictly in a manner that would be permitted as "fair use" under U.S.
+    copyright law (for example, you may not use the code to create NFTs or
+    YouTube videos). If any provision of these license terms is held to be
+    invalid or unenforceable, that provision shall be limited to the minimum
+    extent necessary, and the remaining provisions shall remain in full effect.
+    
+    Please contact the copyright holder with questions or requests regarding
+    licensing, via DM to @KaiaVintr on Twitter or via a comment on this shader.
+    
+    Code is archived at:
+    https://github.com/kaiavintr/shadertoy_experiments/tree/main/Bubbles
+    
+*/
+
+
+const vec3 EXTRA_LIGHT_COLOR = vec3(0.9, 0.9, 1);
+const vec3 EXTRA_LIGHT_DIR = normalize(vec3(1, 3, -2));
+
+#define IR 1.5
+#define R0 0.04
+
+
+#define CUBIC(t, C0, C1, C2, C3) (C0 + (C1 + (C2 + C3*t)*t)*t)
+
+
+vec3 SRGB_TO_LINEAR(vec3 C) {
+    return ((0.30530*C + 0.68217)*C + 0.012523)*C;
+}
+
+vec3 LINEAR_TO_SRGB(vec3 C) {
+    return mix(12.92*C, 1.055*pow(C, vec3(1./2.4)) - 0.055, step(0.0031308, C));
+}
+
+#define SR(C, R, T) smoothstep(C-(R), C+(R), T)
+
+vec3 get_env_extra_light(vec3 V, float r) {
+    if (V.y < 0.) return vec3(0);
+    
+    r /= V.y;
+    
+    float mask;
+    
+    {
+        vec2 p = V.zx / V.y;
+    
+        {
+            vec2 d = vec2(0.06, -1.75) - p;
+            p += 0.25*d * smoothstep(-0.04 ,0., -dot(d, d));
+        }
+
+        float x_left = -0.2845 - 0.0075*p.y;
+        float x_right = 0.28 - 0.005*p.y;
+        
+        float f_left = SR(x_left, r, p.x);
+        float f_split_y = SR(-2.45, 2.*r + 0.1, p.y);
+
+        mask = (f_left - SR(x_right, r, p.x)) * (f_split_y - SR(2.04, 2.*r, p.y));
+        
+        float x_left2 = -0.01132 - 0.014*p.y;
+        float x_right2 = -0.029 - 0.0775*p.y;
+        float r4 = r+0.02;
+        
+        float f_inner_x = SR(x_left2, r4, p.x);
+
+        mask -= (f_inner_x - SR(x_right2, r4, p.x)) * (f_split_y - SR(-1.38, r + 0.05, p.y));
+
+        mask += (f_left - f_inner_x) * (SR(-2.7, 2.*r + 1., p.y) - f_split_y);
+    }
+    
+    if (mask < 0.001) {
+        return vec3(0);
+    } else {
+        float m = dot(V, EXTRA_LIGHT_DIR);
+        float m2 = m*m;
+
+        return mask * (m + (4. + 8.*m2)*m2)*(0.25*EXTRA_LIGHT_COLOR);
+    }
+}
+
+vec3 get_env(vec3 V, float lod_texture, float extra_light_blur) {
+    vec3 c = vec3(0);
+    
+    #if BLACK_BACKGROUND==0
+    c = SRGB_TO_LINEAR(textureLod(iChannel0, V, lod_texture).rgb);
+    #endif
+    
+    return c + get_env_extra_light(V, extra_light_blur);
+}
+
+vec3 transmittance_inner(float c1, float c2, float thickness) {
+    float t1 = 1. / (c1 - c2*cos(4.*PI*IR/620. * thickness));
+    float t2 = 1. / (c1 - c2*cos(4.*PI*IR/580. * thickness));
+    float t3 = 1. / (c1 - c2*cos(4.*PI*IR/540. * thickness));
+    float t4 = 1. / (c1 - c2*cos(4.*PI*IR/500. * thickness));
+    float t5 = 1. / (c1 - c2*cos(4.*PI*IR/460. * thickness));
+
+    float t_rA = 1.1196612*t1 + 0.52973197*t2 + -0.51260775*t3 + -0.35341358*t4 + 0.21662929*t5;
+    float t_gA = -0.10079911*t1 + 0.21283443*t2 + 0.7714012*t3 + 0.30916634*t4 + -0.19268395*t5;
+    float t_bA = 0.03927381*t1 + -0.04024949*t2 + -0.33072285*t3 + -0.25987153*t4 + 1.59140413*t5;
+
+    float t_rB = -0.00048259*t1 + 0.00007486*t2 + 0.00062571*t3 + 0.00029579*t4 + -0.00029626*t5;
+    float t_gB = 0.00007922*t1 + -0.00000462*t2 + -0.00033332*t3 + -0.00011758*t4 + 0.00026071*t5;
+    float t_bB = 0.00005101*t1 + 0.00012158*t2 + 0.00071228*t3 + 0.00032246*t4 + -0.00171112*t5;
+    
+    return thickness*vec3(-0.00020077, 0.00010688, 0.00046554) + (c1-c2)*(vec3(t_rA, t_gA, t_bA) + thickness*vec3(t_rB, t_gB, t_bB));
+}
+
+vec3 transmittance_part1(float a) {
+    float x = 1. - a;
+    
+    float R = R0 + (0.28213775 + (-1.8155226 + (6.22109309 + (-7.98235569 + 4.25102573*x)*x)*x)*x)*(x*x);
+
+    return vec3(1. + R*R, 2.*R, sqrt(1. - 1./(1.5*1.5) * (1. - a*a)));
+}
+
+vec3 transmittance_part2(vec3 part1, float thickness) {
+    return clamp(transmittance_inner(part1.r, part1.g, part1.b*thickness), 0., 1.);
+}
+
+float gyroid(vec3 p) {
+    return dot(sin(p), cos(p.yzx));
+}
+
+vec3 gyroid3d(vec3 p) {
+    vec3 a = sin(p) * cos(p.yzx);
+    
+    return a.yxx + a.zzy;
+}
+
+float get_extra_light_radius(vec3 pix, vec3 V, mat3 camera) {
+    float ry = 1./V.y;
+    
+    vec4 d = vec4(camera[0].zx - ry * camera[0].y * V.zx,
+                  camera[1].zx - ry * camera[1].y * V.zx);
+
+    return sqrt(dot(d, d) / (dot(pix.xy, pix.xy) + pix.z*pix.z) + 0.02*0.02);
+}
+
+void sample_edge_reflect(int max_count, float scale, float b_center, vec3 U, vec3 V, float texture_lod, float extra_light_blur, out vec3 c_front, out vec3 c_back) {
+    float kernel_size = 3. * scale;
+    
+    float mint = b_center - 0.5*kernel_size;
+    float maxt = b_center + 0.5*kernel_size;
+    
+    int count = max_count + min(0, iFrame) - 1;
+    
+    if (maxt > 0.9999995) {
+        maxt = 0.9999995;
+        count += 1;
+    }
+    
+    float b_inc = (1./float(max_count)) * (maxt-mint);
+    float b = b_inc + mint;
+    float u = (b - b_center)/kernel_size + 0.5;
+    float u_inc = b_inc/kernel_size;
+
+    float total_w = 0.;
+    vec3 c1 = vec3(0);
+    vec3 c2 = vec3(0);
+    
+    for (int i = 0; i < count; i++) {
+        float p = 2.*b*b - 1.;
+        float q = sqrt(1. - p*p);
+        
+        float w = u - u*u;
+
+        vec3 R = p*V - q*U;
+        
+        c1 += w * get_env(R, texture_lod, extra_light_blur);
+
+        R = p*V + q*U;
+
+        c2 += w * get_env(R, texture_lod, extra_light_blur);
+        
+        total_w += w;
+        
+        b += b_inc;
+        u += u_inc;
+    }
+    
+    float n = 1./total_w;
+    
+    c_front = n * c1;
+    c_back = n * c2;
+}
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+    vec3 V;
+    float pix_scale, bg_extra_light_r, brightness, focus_distance;
+    
+    {
+        vec3 V0 = vec3(fragCoord.xy - 0.5*iResolution.xy, VIEW_ANGLE_FACTOR*iResolution.y);
+        
+        pix_scale = 1./length(V0);
+    
+        mat3 camera = make_camera(iMouse, iResolution);
+
+        V = camera * pix_scale * V0;
+    
+        bg_extra_light_r = get_extra_light_radius(V0, V, camera);
+        
+        brightness = 1. - 0.5*max(0., (camera * vec3(0,0,1)).y);
+        
+        focus_distance = get_focus_distance(camera*vec3(0,0,1));
+    }
+    
+    uvec4 idset = floatBitsToUint(texelFetch(iChannel1, ivec2(floor(fragCoord)) >> BLOCK_SHIFT, 0));
+    
+    uint visit_count;
+    
+    if ((idset.w & 0x80000000u) == 0u) {
+        uvec4 c = idset | (idset >> 1);
+        
+        c |= c >> 2;
+        c |= c >> 4;
+        c |= c >> 8;
+        
+        c = (c & 1u) + ((c >> 16) & 1u);
+        
+        visit_count = c.x + c.y + c.z + c.w;
+    } else {
+        visit_count = uint(min(MAX_BUBBLE_COUNT, int(7u + (((idset.w >> 16) - idset.w) & 0x7fffu))));
+    }
+    
+    uint id_lower_bound = uint(max(0, int(floor(TIME / BUBBLE_ID_TIME_INCREMENT)) - (MAX_BUBBLE_COUNT + 1)));
+    
+    float dist1=1e20, dist2=1e20, dist3=1e20;
+    vec3 color1=vec3(0), transm1=vec3(1);
+    vec3 color2=vec3(0), transm2=vec3(1);
+    vec3 color3=vec3(0), transm3=vec3(1);
+    
+    float extra_light_blur_base = 0.03 * max(450. / iResolution.y, 1.);
+    
+    for (uint i = 0u; i < visit_count; i++) {
+        uint id;
+        
+        if (i < 7u || (idset.w & 0x80000000u) == 0u) {
+            if (i < 4u) {
+                id = i <= 1u ? idset.x : idset.y;
+            } else {
+                id = i <= 5u ? idset.z : idset.w;
+            }
+            
+            id = (i & 1u) == 0u ? id : (id >> 16);
+        } else {
+            id = idset.w + i - 6u;
+        }
+        
+        id = (id & 0x7fffu) + id_lower_bound;
+        
+        float fid = float(id);
+        
+        float offset_t = -TIME + BUBBLE_ID_TIME_INCREMENT*fid;
+        
+        float x = PATH_CENTER.x + SPEED_X*offset_t;
+        
+        float radius = get_radius(fid);
+        
+        uint hash;
+        vec3 center = vec3(x, get_bubble_center_yz(offset_t, id, hash));
+
+        float proj = dot(V, center);
+        
+        float pop_dist = PATH_CENTER.x + 0.5*DISTANCE_MAX - 1.25*DISTANCE_MAX*HASH_EXTRACT_FULL(hash);
+        
+        if (x > pop_dist && proj > 0. && proj < DISTANCE_MAX && dot(center, center) > radius*radius) {
+            vec3 U = center - proj*V;
+
+            float dist_from_center = length(U);
+
+            U /= dist_from_center;
+            
+            float conf = APERTURE * APERTURE_REFERENCE * abs(proj - focus_distance) / proj;
+            
+            float blur_amount = iResolution.y * conf;
+
+            blur_amount = sqrt(1. + blur_amount*blur_amount);
+            
+            float blur_scale = pix_scale * proj * blur_amount;
+
+            float pix_dist_blurred = (dist_from_center - radius) / blur_scale;
+                
+            if (pix_dist_blurred < 0.75) {
+                vec3 W = V;
+                
+                if (pix_dist_blurred > -0.75) {
+                    float shift = blur_scale * CUBIC(pix_dist_blurred, -0.27758603, -0.56839415, -0.1731804, 0.1215896);
+                    
+                    W = normalize(center - (dist_from_center + shift) * U);
+
+                    proj = dot(W, center);
+                    
+                    vec3 W0 = normalize(center);
+                    
+                    if (dot(W,V) < dot(W0,V)) {
+                        W = W0;
+                        proj = dot(W, center);
+                    }
+                    
+                    U = center - proj*W;
+
+                    dist_from_center = length(U);
+
+                    U /= dist_from_center;
+                }
+                
+                float this_dist = proj - sqrt(proj*proj -  dot(center, center) + radius*radius);
+
+                if (this_dist > 0.) {
+                    vec3 refl_front, refl_back, refl3, t_front, t_back;
+                    float lod_base;
+                    
+                    {
+                        vec3 N_front, N_back;
+                        float a;
+                        
+                        {
+                            float b;
+                            
+                            {
+                                float rr = 1./radius;
+
+                                b = dist_from_center * rr;
+                                a = sqrt(1. - b*b);
+                                
+                                lod_base = 2. * rr * pix_scale * proj / sqrt(1. - b*b);
+                            }
+
+                            N_front = -a*W - b*U;
+                            N_back = a*W - b*U;
+                            
+                            float p = b*b - a*a; // = 2*b*b - 1 = 1 - 2*a*a
+                            float q = 2.*a*b; // = sqrt(1 - p*p)
+                            
+                            refl_front = p*W - q*U;
+                            refl_back = p*W + q*U;
+                            
+                            float p3 = p*p - q*q;
+                            float q3 = 2.*p*q;
+                            
+                            refl3 = p3*W +  q3*U;
+                        }
+                        
+                        {
+                            float thickness_front, thickness_back;
+                            
+                            {
+                                vec4 h = HASH_EXTRACT_VEC4(hash); // low value already used
+                                
+                                float thickness = 50. + 700.*min(1., (x - pop_dist) / DISTANCE_MAX)*h.y;
+                                
+                                float thickness_vary = thickness*(0.1 + 0.5*h.z);
+                                
+                                thickness_front = thickness + thickness_vary*pow(-radius*N_front.y + 2. + radius, 0.5);
+                                thickness_back = thickness + thickness_vary*pow(-radius*N_back.y + 2. + radius, 0.5);
+                            }
+
+                            float ripple_scale = 1. - smoothstep(0.0, 0.01, conf);
+                            
+                            if (ripple_scale > 0.) {
+                                vec3 offsetF = radius*N_front;
+                                vec3 offsetB = radius*N_back;
+                                
+                                {
+                                    vec3 tmp = 0.7*TIME + vec3(3., 2., 1.);
+                                    
+                                    offsetF += 0.1 * gyroid3d(2.*offsetF + tmp);
+                                    offsetB += 0.1 * gyroid3d(2.*offsetB + tmp);
+                                }
+                                
+                                {
+                                    vec3 tmp = 1.1*TIME + vec3(3., 1., 7.);
+                                    
+                                    offsetF += 0.2 * gyroid3d(5.*offsetF + tmp);
+                                    offsetB += 0.2 * gyroid3d(5.*offsetB + tmp);
+                                }
+                                
+                                {
+                                    vec3 tmp = 1.8*TIME + vec3(1.5, 5., 0.4);
+                                    float s = 0.5*ripple_scale;
+                                    
+                                    offsetF += s * gyroid3d(11.*offsetF + tmp);
+                                    offsetB += s * gyroid3d(11.*offsetB + tmp);
+                                }
+                                
+                                {
+                                    vec3 tmp = 0.01*TIME + vec3(2., 1.7, 2.5);
+                                    
+                                    thickness_front *= 1. + 0.02*ripple_scale*gyroid(1.7*offsetF + tmp);
+                                    thickness_back *= 1. + 0.02*ripple_scale*gyroid(1.7*offsetB + tmp);
+                                }
+                            }
+                            
+                            {
+                                vec3 part1 = transmittance_part1(a);
+                                
+                                t_front = transmittance_part2(part1, thickness_front);
+                                t_back = transmittance_part2(part1, thickness_back);
+                            }
+                        }
+                    }
+                    
+                    vec3 env_front, env_back, env3;
+                    
+                    {
+                        float lod = lod_base * blur_amount;
+                        
+                        float texture_lod = log2(lod) + 8.;
+                        float extra_light_blur = sqrt(lod*lod + extra_light_blur_base*extra_light_blur_base);
+
+                        float scaled_conf = iResolution.y * conf;
+
+                        if (scaled_conf * scaled_conf > 1.) {
+                            env_front = get_env(refl_front, texture_lod, extra_light_blur);
+                            env_back = get_env(refl_back, texture_lod, extra_light_blur);
+                        } else {
+                            float lod_min = lod_base * scaled_conf;
+                            float texture_lod_min = log2(lod_min) + 8.;
+                            float extra_light_blur_min = sqrt(lod_min*lod_min + extra_light_blur_base*extra_light_blur_base);
+                            
+                            float rr = 1. / radius;
+                            float b = dist_from_center * rr;
+                            
+                            float d = b*b;
+                
+                            sample_edge_reflect(1 + int(clamp(ceil(5.*d), 1., 5.)),
+                                pix_scale * proj * rr,  b, U, W, 
+                                max(texture_lod_min, texture_lod - 2.5 * d),
+                                max(extra_light_blur_min, extra_light_blur / (1. + 2.*d)),
+                                env_front, env_back
+                                );
+                        }
+                        
+                        env3 = get_env(refl3, texture_lod + 1., 2.*extra_light_blur);
+                    }
+                    
+                    float coverage = smoothstep(-0.75, 0.75, -pix_dist_blurred);
+                    
+                    vec3 this_color = coverage * mix(
+                            env_front, 
+                            (1.-t_back)*mix(env3, env_back, 0.5*(t_front + t_back)),
+                            t_front);
+                    
+                    vec3 this_transmit = 1. - coverage + coverage*t_front*t_back;
+                    
+                    if (this_dist < dist2) {
+                        color3 = color2 + transm2*color3;
+                        transm3 = transm2*transm3;
+                        dist3 = dist2;
+                        
+                        if (this_dist < dist1) {
+                            color2 = color1;
+                            transm2 = transm1;
+                            dist2 = dist1;
+                            color1 = this_color;
+                            transm1 = this_transmit;
+                            dist1 = this_dist;
+                        } else {
+                            color2 = this_color;
+                            transm2 = this_transmit;
+                            dist2 = this_dist;
+                        }
+                    } else {
+                        color3 = this_dist < dist3 ? this_color + this_transmit*color3 : color3 + transm3*this_color;
+                        transm3 =  this_transmit*transm3;
+                        dist3 = min(this_dist, dist3);
+                    }
+                }
+            }
+        }
+    }
+    
+    vec3 background = get_env(V, 0., bg_extra_light_r);
+    
+    vec3 color = transm1*(transm2*(transm3*background + color3) + color2) + color1;
+    
+    // Can multiply by brightness at the end because I'm not doing proper HDR-compatible anti-aliasing of the edges.
+    fragColor = vec4(LINEAR_TO_SRGB(brightness*color), 1.);
+}
+
