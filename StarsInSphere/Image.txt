@@ -1,8 +1,25 @@
 /*
     Copyright (C) 2023 Kaia Vintr
-    (currently @KaiaVintr on Twitter)
     
-    Code archived at https://github.com/kaiavintr/shadertoy_experiments/tree/main/StarsInSphere
+    Code is licensed only for personal, non-commercial use on the Shadertoy
+    website. You may not copy all or any part of the code into another Shadertoy
+    shader. You may not distribute or use all or any part of the code outside of
+    the Shadertoy website, even if the code is accessed via the Shadertoy API or
+    web server. You may not use the code or its output to train or fine-tune
+    machine learning models (e.g. "AI" models). You may not use the code to
+    create image or video content for publication or distribution, except
+    screenshots or brief video clips of the output of the unmodified code to be
+    used strictly in a manner that would be permitted as "fair use" under U.S.
+    copyright law (for example, you may not use the code to create NFTs or
+    YouTube videos). If any provision of these license terms is held to be
+    invalid or unenforceable, that provision shall be limited to the minimum
+    extent necessary, and the remaining provisions shall remain in full effect.
+    
+    Please contact the copyright holder with questions or requests regarding
+    licensing, via DM to @KaiaVintr on Twitter or via a comment on this shader.
+    
+    Code is archived at:
+    https://github.com/kaiavintr/shadertoy_experiments/tree/main/StarsInSphere
     
 */
 
@@ -36,7 +53,7 @@
 const float PI = 3.14159265358979;
 
 // coefficients are low-order to high-order
-#define CUBIC(t, C0, C1, C2, C3) (C0 + (C1 + (C2 - C3*t)*t)*t)
+#define CUBIC(t, C0, C1, C2, C3) (C0 + (C1 + (C2 + C3*t)*t)*t)
 
 
 #if GLASS_TYPE == 0 // Dense crown glass
@@ -61,7 +78,7 @@ const float R_IOR = 1./IOR;
 
 #define STAR_COUNT 12
 
-#define STAR_FINITE_DIFF 0.05
+#define FINITE_DIFF 0.05
 
 #define STAR_HALF_THICKNESS 0.01
 
@@ -83,13 +100,8 @@ const float STAR_BOUND_SQ = 1.05*(STAR_SCALE*STAR_SCALE + STAR_HALF_THICKNESS*ST
 const vec3 EXTRA_LIGHT_COLOR = vec3(0.9, 0.9, 1);
 const vec3 EXTRA_LIGHT_DIR = normalize(vec3(1, 3, -2));
 
-#define EXTRA_LIGHT_BLUR(LOD) (1./(0.04 + 0.01 * (LOD)))
-
-#define ENV_LOD_BASE 0.
 #define ENV_LOD_STARS 3.
-
-const float EXTRA_LIGHT_BLUR_BASE = EXTRA_LIGHT_BLUR(1.);
-const float EXTRA_LIGHT_BLUR_STARS = EXTRA_LIGHT_BLUR(8.);
+#define EXTRA_LIGHT_BLUR_STARS 0.085
 
 
 #define SPHERE_CENTER_Z 10.
@@ -114,6 +126,12 @@ vec3 intersect_sphere_outside(vec3 V) {
     return t*V - vec3(0,0,SPHERE_CENTER_Z);
 }
 
+float intersect_sphere_outside_dist(vec3 V) {
+    float a = SPHERE_CENTER_Z * V.z;
+    
+    return a - sqrt(max(0., a*a - (SPHERE_CENTER_Z*SPHERE_CENTER_Z - SPHERE_RADIUS*SPHERE_RADIUS)));
+}
+
 // uses object space coordinates and arbitrary ray origin
 vec3 intersect_sphere_inside(vec3 P, vec3 V) {
     float a = dot(V, P);
@@ -122,6 +140,13 @@ vec3 intersect_sphere_inside(vec3 P, vec3 V) {
     
     return P + t*V;
 }
+
+float intersect_sphere_inside_dist(vec3 P, vec3 V) {
+    float a = dot(V, P);
+    
+    return sqrt(max(0., a*a - dot(P, P) + SPHERE_RADIUS*SPHERE_RADIUS)) - a;
+}
+
 
 // object space coordinates, arbitrary ray origin and radius**2
 bool sphere_intersection_test(vec3 P, vec3 V, float r2) {
@@ -147,61 +172,58 @@ float sdf_rectangle(vec2 p, vec2 wh, mat2x2 J) {
         d = dot(grad, g);
     }
 
-    return d * (STAR_FINITE_DIFF*STAR_SCALE / length(grad*sign(p)*J));
+    return d * (FINITE_DIFF*STAR_SCALE / length(grad*sign(p)*J));
 }
 
 float sdf_five_pointed_star(vec2 p, out vec2 grad) {
     // Use symmetry of the star to divide number of cases by 10.
-    // Accumulate the reflections/rotations in a matrix so inverse transformation can be applied to the gradient.
+    // Reflections/rotations are accumulated in a matrix so inverse
+    //   transformation can be applied to the gradient.
     
+    mat2 m;
     float sx = sign(p.x);
 
     p.x = abs(p.x);
 
     const vec2 dir1 = vec2(0.30901699, -0.95105652);
-    
+
     float t = dot(p, dir1);
-    mat2 m;
     
     if (t > 0.) {
+        m = mat2( (1. - 2.*dir1.x*dir1.x)*sx, -2.*dir1.x*dir1.y*sx,
+            -2.*dir1.x*dir1.y,  1. - 2.*dir1.y*dir1.y );
         p -= t*(2.*dir1);
-        
-        m = mat2(
-            (1. - 2.*dir1.x*dir1.x)*sx, -2.*dir1.x*dir1.y*sx,
-            -2.*dir1.x*dir1.y,  1. - 2.*dir1.y*dir1.y
-        );
     } else {
         m = mat2(sx, 0, 0, 1);
     }
 
     const vec2 dir2 = vec2(0.80901699, -0.58778525);
-    
+
     t = dot(p, dir2);
     
     if (t > 0.) {
+        m = mat2( 1. - 2.*dir2.x*dir2.x, -2.*dir2.x*dir2.y,
+                  -2.*dir2.x*dir2.y,  1. - 2.*dir2.y*dir2.y
+                ) * m;
         p -= t*(2.*dir2);
-        
-        m = mat2(
-            1. - 2.*dir2.x*dir2.x, -2.*dir2.x*dir2.y,
-            -2.*dir2.x*dir2.y,  1. - 2.*dir2.y*dir2.y
-        ) * m;
     }
     
     if (p.x < 0.) {
         p.x = -p.x;
+        
         m[0][0] *= -1.;
         m[1][0] *= -1.;
     }
     
-    p.y -= 1.;
-    
     float d;
     vec2 g;
 
+    p.y -= 1.;
+    
     t = dot(p, dir1);
     
     if (t <= 0. || t >= 0.72654253) {
-        g = t >= 0.72654253 ? vec2(0.22451399, 0.30901699 - 1.) - p : p;
+        g = t >= 0.72654253 ? (vec2(0.22451399, 0.30901699 - 1.) - p) : p;
         
         float s = 1. / length(g);
         
@@ -300,75 +322,57 @@ float distance_to_plane(vec3 start, vec3 N, float dotVN, float offset) {
     return (-offset - dot(N, start))/dotVN;
 }
 
-// equivalent to iq's smin, but uses yet another formula
-float blend(float x, float y, float w) {
-    float d = x - y;
-    float d2 = d*d;
-    
-    return d2 <= w*w ? 0.5*(x+y) - 0.25*w - 0.25/w*d2 : min(x, y);
-}
-
-// Approximation of "uneven capsule", with arbitrary orientation.
-// (not a proper SDF, but close enough?)
-float rough_blob(vec2 gap1, vec2 gap2, float s, float d1, float d2) {
-    float t = clamp(s * dot(gap1, gap2), 0., 1.);
-    
-    return distance(gap1, t*gap2) - mix(d1, d2, t);
-}
-
 vec3 get_env_texture(vec3 V, float lod) {
     return SRGB_TO_LINEAR(textureLod(iChannel0, V, lod).rgb);
 }
 
-vec3 get_env_extra_light(vec3 V, float blur) {
-    if (V.y < 0.2) return vec3(0);
+float SR(float c, float r, float t) {
+    return smoothstep(c-r, c+r, t);
+}
 
-    float d = 1000.;
+vec3 get_env_extra_light(vec3 V, float r) {
+    if (V.y < 0.) return vec3(0);
     
-    if (-V.x > V.y && (abs(V.z)-0.4*V.y)<0.1) {
-        vec2 p = -V.zy / V.x;
-        
-        d = rough_blob(p-vec2(-0.038, 0.25), vec2(-0.122, 0.95), 1.09005607, 0.028, 0.17);
-
-        if (p.y > 0.3) {
-            if (p.y > 0.5) {
-                d = blend(d, distance(p, vec2(0.06, 0.885))-0.16, 0.04);
-                d = blend(d, distance(p, vec2(-0.08, 0.67))-0.08, 0.04);
-                d = blend(d, rough_blob(p - vec2(0.085, 0.64), vec2(0.065, 0.56), 3.14638559, 0.025, 0.1), 0.02);
-            }
-
-            d = blend(d, distance(p, vec2(-0.049, 0.46))-0.0455, 0.056);
-            d = blend(d, rough_blob(p - vec2(0.1, 0.5), vec2(0.14, 0.7), 1.96232339, 0.039, 0.1), 0.02);
-            d = blend(d, distance(p, vec2(0.093, 0.445))-0.035, 0.04);
-        }
-    } else if (V.y > 0.6 && abs(V.x) < V.y && abs(V.z) < 0.5) {
+    r /= V.y;
+    
+    float mask;
+    
+    {
         vec2 p = V.zx / V.y;
-        vec2 c = p.x < 0. ? vec2(-p.x - 0.289, 0.011) : vec2(p.x - 0.28, -0.005);
-        
-        d = c.x - c.y*p.y;
-    } else if (V.y > 0.3 && V.x > 0. && (abs(V.z) - 0.4*V.y) < 0.1) {
-        vec2 p = V.zy / V.x;
-
-        p.y = 0.4885 - p.y;
-
-        if (p.y < 0.) {
-            vec2 c = p.x < 0. ? vec2(-p.x - 0.15, 0.293255) : vec2(p.x - 0.135, 0.273705);
-
-            d = max(c.x + c.y*p.y, p.y);
-        } else {
-            d = length(vec2(p.x - clamp(p.x, -0.15, 0.135), p.y));
+    
+        {
+            vec2 d = vec2(0.06, -1.75) - p;
+            p += 0.25*d * smoothstep(-0.04 ,0., -dot(d, d));
         }
+
+        float x_left = -0.2845 - 0.0075*p.y;
+        
+        float f_left = SR(x_left, r, p.x);
+        
+        float f_split_y = SR(-2.45, 2.*r + 0.1, p.y);
+
+        float x_right = 0.28 - 0.005*p.y;
+
+        mask = (f_left - SR(x_right, r, p.x)) * (f_split_y - SR(2.04, 2.*r, p.y));
+        
+        float x_left2 = -0.01132 - 0.014*p.y;
+        float x_right2 = -0.029 - 0.0775*p.y;
+        
+        float r4 = r+0.02;
+        float f_inner_x = SR(x_left2, r4, p.x);
+
+        mask -= (f_inner_x - SR(x_right2, r4, p.x)) * (f_split_y - SR(-1.38, r + 0.05, p.y));
+
+        mask += (f_left - f_inner_x) * (SR(-2.7, 2.*r + 1., p.y) - f_split_y);
     }
     
-    d *= blur;
-
-    if (d >= 0.5) {
+    if (mask < 0.001) {
         return vec3(0);
     } else {
         float m = dot(V, EXTRA_LIGHT_DIR);
         float m2 = m*m;
 
-        return smoothstep(0., 1., 0.5 - d)*(m + (4. + 8.*m2)*m2)*(0.25*EXTRA_LIGHT_COLOR);
+        return mask * (m + (4. + 8.*m2)*m2)*(0.25*EXTRA_LIGHT_COLOR);
     }
 }
 
@@ -397,8 +401,8 @@ vec4 get_env_refract(vec3 N, vec3 V, float lod_texture, float extra_light_blur) 
 }
 
 vec3 env_map_inside_sphere(vec3 color, vec3 N_surf, vec3 P, vec3 V, mat3 envMat) {
-    P = envMat * P;
     V = envMat * V;
+    P = envMat * P;
 
     vec3 P_back1 = intersect_sphere_inside(P, V);
     vec3 N_back1 = normalize(P_back1);
@@ -412,20 +416,21 @@ vec3 env_map_inside_sphere(vec3 color, vec3 N_surf, vec3 P, vec3 V, mat3 envMat)
         if (k < 0.) {
             // When total internal reflection happens, the light ray tends to go 
             //   all the way around the sphere and bounce off the same surface again
-            //   (based on experiments with the pbrt renderer)
+            //   (based on experiments with the pbrt renderer).
             // Maybe in reality the effects of scattering and imperfections in the surface
             //   would dominate, but I think modeling that would require experimental
             //   measurements of an actual glass sphere.
             
             // Choose a new, arbitrary but plausible, direction for the ray.
-            V = reflect(V, -(envMat * N_surf));
+            V = reflect(V, envMat * N_surf);
             P_back1 = intersect_sphere_inside(P, V);
             N_back1 = normalize(P_back1);
             
             alpha = smoothstep(0., 0.1, -k);
             
-            // Color is more saturated because it's bouncing off the same surface twice.
-            // Blend between normal and saturated color so there isn't a distracting edge.
+            // Color (e.g. for brass material) is more saturated because it bounces off
+            //   the same surface twice. Blend between normal and saturated color to avoid
+            //   a distracting edge.
             color = mix(color, color*color, alpha);
         } else {
             alpha = smoothstep(0., 0.1, k);
@@ -439,49 +444,60 @@ vec3 env_map_inside_sphere(vec3 color, vec3 N_surf, vec3 P, vec3 V, mat3 envMat)
     
     vec4 c = get_env_refract(N_back1, V, ENV_LOD_STARS, EXTRA_LIGHT_BLUR_STARS);
     
-    c += (1.-c.a)*get_env_refract(N_back2, refl_back1, ENV_LOD_STARS, EXTRA_LIGHT_BLUR_STARS);
+    c += (1. - c.a) * get_env_refract(N_back2, refl_back1, ENV_LOD_STARS, EXTRA_LIGHT_BLUR_STARS);
 
-    // Fade the environment map to constant vec3(0.5) near the line where
-    //      total internal reflection starts, to avoid aliasing artifacts.
+    // Fade the environment map to constant vec3(0.5) near the line where total internal
+    //   reflection starts, to avoid aliasing artifacts.
     // Also use the same constant vec3(0.5) to fill in any light that is missing due to not
-    //      tracing more bounces.
-    // Multiply the result by the reflection color.
+    //   tracing more bounces.
+    // Multiply the result by the reflection color (i.e. Fresnel coefficient).
     
     return (alpha*c.rgb + (1. - alpha*c.a)*vec3(0.5)) * color;
 }
 
-vec4 render_stars(vec3 V0, float base_distance, float base_distance2, vec3 P, vec3 V, vec3 P2, vec3 V3, mat3 camera_rotate, mat3 object_rotate,
+vec4 render_stars(vec3 V0, mat3 camera_rotate, float object_rotate_angle,
                   float attenuation, float attenuation_for_reflection, out vec4 color_direct) {
+    vec3 V = normalize(V0);
+    
     // view rays for finite difference approximations of derivatives w.r.t. screen x and y
-    vec3 Vdx = normalize(V0 + vec3(STAR_FINITE_DIFF, 0, 0));
-    vec3 Vdy = normalize(V0 + vec3(0, STAR_FINITE_DIFF, 0));
+    vec3 Vdx = normalize(V0 + vec3(FINITE_DIFF, 0, 0));
+    vec3 Vdy = normalize(V0 + vec3(0, FINITE_DIFF, 0));
+    
+    float base_distance = intersect_sphere_outside_dist(V);
+     
+    vec3 P = base_distance*V - vec3(0,0,SPHERE_CENTER_Z);
     
     vec3 Pdx = intersect_sphere_outside(Vdx);
     vec3 Pdy = intersect_sphere_outside(Vdy);
+
+    mat3 object_rotate;
+    
+    {
+        float sin_xz2 = sin(object_rotate_angle);
+        float cos_xz2 = cos(object_rotate_angle);
+
+        object_rotate = mat3(
+            cos_xz2, 0, -sin_xz2,
+            0, 1, 0,
+            sin_xz2, 0, cos_xz2
+        );
+    }
     
     {
         mat3 combined_rotate = camera_rotate * object_rotate;
         
+        P *= combined_rotate;
         Pdx *= combined_rotate;
         Pdy *= combined_rotate;
         
+        V *= combined_rotate;
         Vdx *= combined_rotate;
         Vdy *= combined_rotate;
-        
-        P *= combined_rotate;
-        V *= combined_rotate;
-
-        P2 *= combined_rotate;
-        V3 *= combined_rotate;
     }
     
-    {
-        vec3 Ndx = normalize(Pdx);
-        vec3 Ndy = normalize(Pdy);
-
-        Vdx = refract(Vdx, Ndx, R_IOR);
-        Vdy = refract(Vdy, Ndy, R_IOR);
-    }
+    V = refract(V, normalize(P), R_IOR);
+    Vdx = refract(Vdx, normalize(Pdx), R_IOR);
+    Vdy = refract(Vdy, normalize(Pdy), R_IOR);
     
     float scaled_aperture = APERTURE * iResolution.y;
 
@@ -496,7 +512,7 @@ vec4 render_stars(vec3 V0, float base_distance, float base_distance2, vec3 P, ve
     // first time is for the refracted image, second for the image reflected from the back of the sphere
     for (int i = 0; i < itr_end; i++) {
         if (i == STAR_COUNT) {
-            // return color&opacity of image of stars refracted through front of sphere
+            // return color and opacity of image of stars refracted through front of sphere
             color_direct = color;
             
             // set up variables for computing reflection in back of sphere
@@ -507,10 +523,14 @@ vec4 render_stars(vec3 V0, float base_distance, float base_distance2, vec3 P, ve
             prev_dist = 1e10;
             
             attenuation = attenuation_for_reflection;
-            base_distance = base_distance2;
-
-            V = V3;
-            P = P2;
+            
+            float t = intersect_sphere_inside_dist(P, V);
+            
+            base_distance += t;
+            
+            P += t*V;
+            
+            V = reflect(V, -normalize(P));
 
             Pdx = intersect_sphere_inside(Pdx, Vdx);
             Vdx = reflect(Vdx, -normalize(Pdx));
@@ -519,17 +539,17 @@ vec4 render_stars(vec3 V0, float base_distance, float base_distance2, vec3 P, ve
             Vdy = reflect(Vdy, -normalize(Pdy));
         }
         
-        // get all of the vectors defining the star position and orientation
-        // (not really used as a matrix)
+        // Get all of the vectors defining the star position and orientation
+        //   (not really used as a matrix)
         mat4x3 star = STARS[i + i_offset];
         
-        // center of star (also center of bounding sphere)
+        // Center of star (also center of bounding sphere)
         vec3 Cp = -star[3].x*star[0] - star[3].y*star[1] - star[3].z*star[2];
         
-        // ray origin in coordinates relative to center
+        // Ray origin in coordinates relative to center
         vec3 edge_P = P - Cp;
         
-        // test intersection with bounding sphere
+        // Test intersection with bounding sphere
         if (sphere_intersection_test(edge_P, V, STAR_BOUND_SQ)) {
             // Color and opacity of two nearest star edge intersections
             vec4 c_edge1 = vec4(0), c_edge2 = vec4(0);
@@ -546,7 +566,7 @@ vec4 render_stars(vec3 V0, float base_distance, float base_distance2, vec3 P, ve
                     
                     float dotVN = dot(N, V);
 
-                    // ignore if edge faces away or is nearly perpendicular to view ray
+                    // Ignore if edge faces away or is nearly perpendicular to view ray
                     if (dotVN < -0.01) {
                         float t = distance_to_plane(edge_P, N, dotVN, -0.30901699 * STAR_SCALE);
                         
@@ -565,21 +585,20 @@ vec4 render_stars(vec3 V0, float base_distance, float base_distance2, vec3 P, ve
                                 mat2x2 J;
                                 
                                 {
-                                    mat2x3 M = mat2x3(U1, star[2]);
                                     vec3 edge_P_dx = Pdx - Cp;
                                     vec3 edge_P_dy = Pdy - Cp;
+                                    mat2x3 M = mat2x3(U1, star[2]);
 
                                     J = mat2x2(
                                         (edge_P_dx + distance_to_plane(edge_P_dx, N, dot(Vdx, N), -0.30901699 * STAR_SCALE) * Vdx) * M - uv_raw,
                                         (edge_P_dy + distance_to_plane(edge_P_dy, N, dot(Vdy, N), -0.30901699 * STAR_SCALE) * Vdy) * M - uv_raw);
                                 }
                                 
-                                // Note: Need to compensate for the fact that the Jacobian hasn't
-                                //   been scaled properly by multiplying distance by STAR_FINITE_DIFF*STAR_SCALE
+                                // Note: Need to compensate for the fact that the Jacobian hasn't been scaled properly,
+                                //   by multiplying distance by FINITE_DIFF*STAR_SCALE
 
                                 float d = sdf_rectangle(uv - sign(uv.x)*vec2(0.58778525, 0), vec2(0.95105652-0.58778525, STAR_HALF_THICKNESS), J);
-
-                                float d_cross = 2.*STAR_HALF_THICKNESS * (STAR_FINITE_DIFF*STAR_SCALE) / length(vec2(0,1)*J);
+                                float d_cross = 2.*STAR_HALF_THICKNESS * (FINITE_DIFF*STAR_SCALE) / length(vec2(0,1)*J);
                                 
                                 float a;
                                 
@@ -598,9 +617,16 @@ vec4 render_stars(vec3 V0, float base_distance, float base_distance2, vec3 P, ve
                             }
                             
                             if (mask > 0.005) {
-                                vec4 c = mask*vec4(clamp(attenuation*env_map_inside_sphere(
-                                        metallic_fresnel_approx(-dotVN, (i&1)==0 ? METAL1 : METAL2),
-                                        N, P + tV, V - 2.*dotVN * N /*reflect*/, object_rotate), 0., 1.), 1.);
+                                vec4 c = mask * vec4(
+                                        clamp(
+                                            attenuation * env_map_inside_sphere(
+                                                metallic_fresnel_approx(-dotVN, (i&1)==0 ? METAL1 : METAL2),
+                                                N, P + tV, V - 2.*dotVN * N /*reflect*/, object_rotate
+                                            ),
+                                            0., 1.
+                                        ),
+                                        1.
+                                        );
                                 
                                 if (t < edge_dist1) {
                                     c_edge2 = c_edge1;
@@ -615,8 +641,9 @@ vec4 render_stars(vec3 V0, float base_distance, float base_distance2, vec3 P, ve
                         }
                     }
 
-                    if (j < 4) { // rotate the 2D vector for the edge direction
-                        Nxy = mat2(0.30901699, -0.95105652, 0.95105652, 0.30901699)*Nxy;
+                    if (j < 4) {
+                        // Rotate the 2D vector for the edge direction
+                        Nxy = mat2(0.30901699, -0.95105652, 0.95105652, 0.30901699) * Nxy;
                     }
                 }
             }
@@ -632,6 +659,7 @@ vec4 render_stars(vec3 V0, float base_distance, float base_distance2, vec3 P, ve
                 vec3 P_inter = P + t*V;
 
                 vec2 uv_raw = P_inter*mat2x3(star);
+                
                 vec2 uv = R_STAR_SCALE*(uv_raw + star[3].xy);
 
                 float r = length(uv);
@@ -651,17 +679,17 @@ vec4 render_stars(vec3 V0, float base_distance, float base_distance2, vec3 P, ve
                         {
                             float s = base_distance + t;
                                 
-                            a = scaled_aperture * abs(s-FOCUS_DISTANCE) / s;
+                            a = scaled_aperture * abs(s - FOCUS_DISTANCE) / s;
                                 
                             a = sqrt(1. + a*a);
                         }
                         
                         mask = smoothstep(-a, a, 
-                                d * -STAR_FINITE_DIFF*STAR_SCALE / length(grad*mat2x2(uv_dx - uv_raw, uv_dy - uv_raw))
-                            ) * smoothstep(0., 0.15, abs(dotVN) * (1.5 - r));
+                                d * -FINITE_DIFF*STAR_SCALE / length(grad*mat2x2(uv_dx - uv_raw, uv_dy - uv_raw)))
+                            * smoothstep(0., 0.15, abs(dotVN) * (1.5 - r));
                     }
                     
-                    if (mask > 0. || c_edge1.a > 0.01) {
+                    if (mask > 0.005 || c_edge1.a > 0.005) {
                         vec3 N;
                         
                         {
@@ -674,14 +702,20 @@ vec4 render_stars(vec3 V0, float base_distance, float base_distance2, vec3 P, ve
                             dotVN = abs(dotVN);
                         }
 
-                        vec4 c = mask*vec4(clamp(attenuation*env_map_inside_sphere(
-                                metallic_fresnel_approx(dotVN, ((i+i_offset)&1)==0 ? METAL1 : METAL2),
-                                N, P_inter, 
-                                V + 2.*dotVN * N /* reflect, taking into account fact that dotVN = -dot(V, N) */,
-                                object_rotate), 0., 1.), 1.);
+                        vec4 c = mask * vec4(
+                                    clamp(
+                                        attenuation * env_map_inside_sphere(
+                                            metallic_fresnel_approx(dotVN, ((i + i_offset) & 1)==0 ? METAL1 : METAL2),
+                                            N, P_inter,
+                                            V + 2.*dotVN * N /* reflect, taking into account fact that dotVN = -dot(V, N) */,
+                                            object_rotate
+                                        ),
+                                        0., 1.
+                                    ),
+                                1.);
                         
                         // Composite face with edge(s), using fancy blending to avoid gap
-                        if (c_edge1.a > 0. && c.a < 0.995) {
+                        if (c_edge1.a > 0.005 && c.a < 0.995) {
                             if (c_edge1.a + c.a <= 1.005) {
                                 c += c_edge1;
                             } else {
@@ -689,14 +723,13 @@ vec4 render_stars(vec3 V0, float base_distance, float base_distance2, vec3 P, ve
                                 c.a = 1.;
                             }
                             
-                            c += (1.-c.a)*c_edge2;
+                            c += (1. - c.a) * c_edge2;
                         }
 
                         c_edge1.a = 0.;
 
                         if (t < prev_dist) {
                             color = c + (1. - c.a)*color;
-                            
                             prev_dist = t;
                         } else {
                             color = color + (1. - color.a)*c;
@@ -725,7 +758,7 @@ vec3 get_refracted_ray(vec3 V1) {
 
 // Deliberately bad hash function that turns an integer into a vec3
 // Based on Gray codes
-// Intent is to reduce the size of the jumps between steps.
+// Intent is to mix up the size of the jumps between steps.
 vec3 rand_vec3(int t) {
     ivec3 iv;
     
@@ -746,10 +779,10 @@ vec3 rand_vec3(int t) {
     return v;
 }
 
-void get_scene_rotation(out mat3 camera_rotate, out mat3 object_rotate, out float brightness_scale) {
+void get_scene_rotation(out mat3 camera_rotate, out float object_rotate_angle, out float brightness_scale) {
     
-    // Fix mouse position if user hasn't clicked the mouse yet
-    vec2 mouse = iMouse.x == 0. && iMouse.y == 0. ? 0.5*iResolution.xy : iMouse.xy;
+    // Fix mouse position if user hasn't clicked the mouse yet or resolution has changed since mouse button was pressed
+    vec2 mouse = iMouse.x == 0. && iMouse.y == 0. || iMouse.x > iResolution.x || iMouse.y > iResolution.y ? 0.5*iResolution.xy : iMouse.xy;
     
     // Convert mouse coordinates to (-1, 1)
     vec2 mouse_scaled = 2.0 * (mouse.xy / iResolution.xy - 0.5);
@@ -765,12 +798,7 @@ void get_scene_rotation(out mat3 camera_rotate, out mat3 object_rotate, out floa
     float cos_yz1 = cos(yz_angle1);
     
     // Get rotation angle for stars (one axis only)
-    float xz_angle2 = STAR_ROTATION_SPEED*iTime + STAR_ROTATION_MOD_AMP*cos(STAR_ROTATION_MOD_FREQ*iTime + 0.8) + PI * mouse_scaled.x;
-    
-    xz_angle2 -= xz_angle1;
-    
-    float sin_xz2 = sin(xz_angle2);
-    float cos_xz2 = cos(xz_angle2);
+    object_rotate_angle = STAR_ROTATION_SPEED*iTime + STAR_ROTATION_MOD_AMP*cos(STAR_ROTATION_MOD_FREQ*iTime + 0.8) + PI * mouse_scaled.x - xz_angle1;
 
     camera_rotate = mat3(
         1, 0, 0,
@@ -812,20 +840,150 @@ void get_scene_rotation(out mat3 camera_rotate, out mat3 object_rotate, out floa
     #else
     brightness_scale = 1. - 0.5*max(0., -mouse_scaled.y);
     #endif
+}
 
-    object_rotate = mat3(
-        cos_xz2, 0, -sin_xz2,
-        0, 1, 0,
-        sin_xz2, 0, cos_xz2
-    );
+float get_extra_light_radius(vec3 pix, vec3 V, mat3 camera) {
+    float rsqrt = 1. / sqrt(dot(pix.xy, pix.xy) + pix.z*pix.z);
+    
+    float ry = 1. / V.y;
+
+    return length(vec4(camera[0].zx - ry * camera[0].y * V.zx,
+                  camera[1].zx - ry * camera[1].y * V.zx)) * rsqrt;
+}
+
+vec3 sample_edge_reflect(int max_count, float scale, float distance_2d, vec3 U, vec3 V, float color_scale, float texture_lod, float extra_light_blur) {
+    float kernel_size = 3. * scale;
+    
+    float b_center = distance_2d * scale;
+    
+    float mint = b_center - 0.5*kernel_size;
+    float maxt = b_center + 0.5*kernel_size;
+    
+    int count = max_count + min(0, iFrame) - 1;
+    
+    if (maxt > 0.9999995) {
+        maxt = 0.9999995;
+        count += 1;
+    }
+    
+    float b_inc = 1. / float(max_count) * (maxt-mint);
+    float b = b_inc + mint;
+    float r_kernel_size = 1. / kernel_size;
+    float u = (b - b_center) * r_kernel_size + 0.5;
+    float u_inc = b_inc * r_kernel_size;
+
+    float total_w = 0.;
+    vec3 c = vec3(0);
+    
+    for (int i = 0; i < count; i++) {
+        float p = 2.*b*b - 1.;
+        float q = sqrt(1. - p*p);
+        
+        vec3 R = p*V - q*U;
+        
+        float w = u - u*u;
+        
+        // clamp values before computing weighted sum, to reduce aliasing artifacts.
+        c += w * clamp(color_scale*(get_env_texture(R, texture_lod) + get_env_extra_light(R, extra_light_blur)), 0., 1.);
+        total_w += w;
+        
+        b += b_inc;
+        u += u_inc;
+    }
+    
+    return 1. / total_w * c;
+}
+
+vec3 sample_edge_refract(int max_count, float scale, float distance_2d, vec3 U, vec3 V, float color_scale, float texture_lod, float extra_light_blur) {
+    float kernel_size = 3. * scale;
+    
+    float b_center = distance_2d * scale;
+    
+    float mint = b_center - 0.5*kernel_size;
+    float maxt = b_center + 0.5*kernel_size;
+    
+    int count = max_count + min(0, iFrame) - 1;
+    
+    if (maxt > 0.9999995) {
+        maxt = 0.9999995;
+        count += 1;
+    }
+    
+    float b_inc = 1. / float(max_count) * (maxt-mint);
+    float b = b_inc + mint;
+    float r_kernel_size = 1. / kernel_size;
+    float u = (b - b_center) * r_kernel_size + 0.5;
+    float u_inc = b_inc * r_kernel_size;
+
+    float total_w = 0.;
+    vec3 c = vec3(0);
+    
+    for (int i = 0; i < count; i++) {
+        float b2 = b*b;
+        float a = sqrt(1. - b2);
+        
+        float refract_q = R_IOR * (-a + sqrt(IOR*IOR - b2));
+        float refract_a = R_IOR + a*refract_q;
+        float refract_b = b*refract_q;
+        
+        float k = -2. * (a*R_IOR + refract_q);
+        float back_a = -k*refract_a - a;
+        float back_b = -k*refract_b - b;
+        
+        float rotateC = -a*back_a - b*back_b;
+        float rotateS = sqrt(1. - rotateC*rotateC);
+        
+        float d = 2. * (rotateS*back_a - rotateC*back_b);
+        
+        vec3 R = (-rotateC - d*back_b)*V + (-rotateS + d*back_a)*U;
+        
+        float w = u - u*u;
+
+        // clamp values before computing weighted sum, to reduce aliasing artifacts.
+        c += w * clamp(color_scale*(get_env_texture(R, texture_lod) + get_env_extra_light(R, extra_light_blur)), 0., 1.);
+        total_w += w;
+        
+        b += b_inc;
+        u += u_inc;
+    }
+    
+    return 1. / total_w * c;
+}
+
+// Function for computing LOD (before log2) for rays represented in a 2D basis, using
+//      finite differences for the radial derivative.
+float compute_lod(float a, float a_fd, float b, float b_fd, float V_z, float U_z, float angle) {
+    float da = a_fd - a, db = b_fd - b, z = a*V_z + b*U_z;
+    
+    return max((da*da + db*db) / (FINITE_DIFF*FINITE_DIFF), angle*angle*(1. - z*z));
+}
+
+void compute_2d_refraction(float a, float b, out float refract_a, out float refract_b, out float rotateC, out float rotateS) {
+    float q = R_IOR*(-a + sqrt(IOR*IOR - b*b));
+    
+    float internal_a = R_IOR + a*q;
+    float internal_b = b*q;
+    
+    float k = -2.*(a*R_IOR + q);
+    
+    float back_a = -k*internal_a - a;
+    float back_b = -k*internal_b - b;
+    
+    rotateC = -a*back_a - b*back_b;
+    rotateS = sqrt(1. - rotateC*rotateC);
+    
+    float d = 2.*(rotateS*back_a - rotateC*back_b);
+    
+    refract_a = -rotateC - d*back_b;
+    refract_b = -rotateS + d*back_a;
 }
 
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     mat3 camera_rotate;
-    mat3 object_rotate;
+    float object_rotate_angle;
     float brightness_scale; // used for very basic tone-mapping
 
-    get_scene_rotation(camera_rotate, object_rotate, brightness_scale);
+    get_scene_rotation(camera_rotate, object_rotate_angle, brightness_scale);
     
     float SPHERE_2D_RADIUS_PIXELS = SPHERE_2D_RADIUS * VIEW_ANGLE_FACTOR * iResolution.y;
     
@@ -838,237 +996,203 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 
     float coverage = smoothstep(-0.75, 0.75, distance_from_edge_2d);
     
-    vec3 color = vec3(0);
+    vec3 color;
+    
+    // Get the background color first (needed at the edges of the sphere, due to anti-aliasing)
+    //   to help reduce maximum register usage (camera_rotate matrix can then be discarded while rendering the stars).
+    if (coverage < 1.) {
+        vec3 V1 = normalize(vec3(pix2d, unnormalized_z)) * camera_rotate;
+        
+        vec3 c = get_env(V1, 0., get_extra_light_radius(vec3(pix2d, unnormalized_z), V1, transpose(camera_rotate)) + 0.02);
+        
+        color = (1. - coverage) * clamp(brightness_scale*c, 0., 1.);
+    } else {
+        color = vec3(0);
+    }
 
     if (coverage > 0.001) {
-        float angle = 1. / distance_2d;
-
-        vec3 c_r2;
-        vec3 V0, V1, P1, N1, V2, P2, N2;
-        float target_r;
+        float reflectance;
+        vec3 color_reflect_back, color_refract;
         
-        // Get light that passes through the sphere without reflecting
         {
-            float r1, r2;
+            float basis_scale = 1. / length(vec3(pix2d, unnormalized_z));
             
-            if (coverage >= 0.995) {
-                r1 = 0.3798535141;
-                r2 = 0.;
-            } else {
-                r1 = CUBIC(distance_from_edge_2d, -0.07651873, 0.8614337, -0.19298579, -0.19235204);
-                r2 = CUBIC(distance_from_edge_2d, -0.25930044, 0.570673, -0.20568811, -0.12564089);
-            }
+            vec3 basis_V = basis_scale * vec3(pix2d, unnormalized_z);
             
-            float base_z = unnormalized_z * distance_2d;
+            vec3 basis_U = normalize(vec3(0,0,SPHERE_CENTER_Z) - basis_V.z*SPHERE_CENTER_Z*basis_V);
+            
+            basis_scale *= SPHERE_CENTER_Z / SPHERE_RADIUS;
+            
+            float b = basis_scale * (distance_2d + (coverage >= 0.995 ? 0. : CUBIC(distance_from_edge_2d, -0.27758603, 0.56839415, -0.1731804, -0.1215896)));
+            float a = sqrt(1. - b*b);
+            
+            // All rays reflected or refracted in the sphere are co-planar
+            // Can now represent any of those rays as a linear combination of the view ray V and another vector U.
+            // i.e. can use 2D geometry for all computations.
+            // In this basis, the normal vector for first point of intersection is (-b, -a)
+            
+            // Sorry about the weird data flow here...
+            // I had trouble getting it to run at full speed on integrated graphics, and had to do everything possible to
+            //   limit data dependencies that might increase register usage.
 
-            vec3 R1 = get_refracted_ray(normalize(vec3(pix2d * (distance_2d + r1), base_z)));
-            
-            target_r = (distance_2d + r2) / (VIEW_ANGLE_FACTOR * iResolution.y);
+            float extra_light_blur_base, basis_V_z, basis_U_z;
             
             {
-                vec2 tmp = pix2d * (distance_2d + r2);
+                // Compute approximate level of detail for the environment map texture, for reflected ray.
+                // Want the magnitude of gradient of the reflected ray w.r.t. screen x and y
+                // Doing this in two parts, a radial part (which will be high towards the edge) and a
+                //      tangent part (which will not vary as much).
+                // For this computation, need the z part of the V and U vectors before rotation by the camera matrix.
                 
-                V0 = vec3(tmp / distance_2d, unnormalized_z);
-            
-                V1 = normalize(V0);
+                float lod_reflect;
+                
+                {
+                    float lod_radial = 2.*basis_scale / a;
+                    
+                    float p = b*b - a*a;
+                    float q = 2.*a*b;
+                    
+                    float z = p*basis_V.z - q*basis_U.z;
+                    float angle = 1. / distance_2d;
+                    float lod_tangent = angle*sqrt(1. - z*z);
+                    
+                    lod_reflect = log2(max(lod_radial, lod_tangent)) + 8.;
+                }
+                
+                basis_V_z = basis_V.z;
+                basis_U_z = basis_U.z;
+                
+                basis_V = basis_V * camera_rotate;
+                basis_U = basis_U * camera_rotate;
+                
+                // "a" turns out to contain the dot product we need for the Fresnel coefficient computation
+                reflectance = fresnel_approx(a);
+                
+                // Compute a good base value for the blur distance for the extra "HDR" light
+                extra_light_blur_base = 0.03 * max(450. / iResolution.y, 1.);
+                
+                // Use heuristic to decide how many samples to take of reflected rays (higher at edge of sphere).
+                
+                float d = distance_2d / SPHERE_2D_RADIUS_PIXELS;
+                
+                d = d*d;
+                
+                int max_count = 1 + int(clamp(ceil(5.*d), 1., 5.));
+                
+                float m = brightness_scale*reflectance;
+
+                color += coverage * sample_edge_reflect(max_count, basis_scale, distance_2d, basis_U, basis_V, m, 
+                    lod_reflect - 2.5 * d,
+                    extra_light_blur_base);
             }
             
-            P1 = intersect_sphere_outside(V1);
+            float refract2_a, refract2_b, lod_refract;
             
-            N1 = normalize(P1);
+            {
+                float rotateC, rotateS;
+                
+                compute_2d_refraction(a, b, refract2_a, refract2_b, rotateC, rotateS);
+                
+                // Using finite differences instead of derivatives to compute radial LOD for refracted rays, because it's cheaper.
+                // (only need one extra sample since we're working in 2D)
 
-            V2 = refract(V1, N1, R_IOR);
-            
-            P2 = intersect_sphere_inside(P1, V2);
-            
-            N2 = normalize(P2);
+                float rotateC_fd, rotateS_fd, refract2_a_fd, refract2_b_fd;
+                
+                {
+                    float b_fd = b + basis_scale * FINITE_DIFF;
+                    float a_fd = sqrt(1. - b_fd*b_fd);
+                    
+                    compute_2d_refraction(a_fd, b_fd, refract2_a_fd, refract2_b_fd, rotateC_fd, rotateS_fd);
+                }
+                
+                lod_refract = compute_lod(refract2_a, refract2_a_fd, refract2_b, refract2_b_fd, basis_V_z, basis_U_z, 1. / distance_2d);
+                
+                // Get the second and third refracted rays out of the way before sampling the first refracted ray
+                //      (hopefully this reduces maximum register count).
+                {
+                    float refract3_a = rotateC*refract2_a - rotateS*refract2_b;
+                    float refract3_b = rotateS*refract2_a + rotateC*refract2_b;
+                    float lod_refract3;
+                    
+                    {
+                        float lod_refract4, refract4_a, refract4_b;
+                        
+                        {
+                            float refract3_a_fd = rotateC_fd*refract2_a_fd - rotateS_fd*refract2_b_fd;
+                            float refract3_b_fd = rotateS_fd*refract2_a_fd + rotateC_fd*refract2_b_fd;
+                        
+                            lod_refract3 = compute_lod(refract3_a, refract3_a_fd, refract3_b, refract3_b_fd, basis_V_z, basis_U_z, 1. / distance_2d);
+                            
+                            refract4_a = rotateC*refract3_a - rotateS*refract3_b;
+                            refract4_b = rotateS*refract3_a + rotateC*refract3_b;
 
-            vec3 R2 = refract(V2, -N2, IOR);
-            
-            float lod_radial = distance(R1, R2) / (r1 - r2);
-            float lod_tangent = length(R2.xy)*angle;
-            
-            float lod = max(lod_radial, lod_tangent);
-            
-            float extra_lod = clamp(1. / (0.05 + lod), 2.5, 100.);
-
-            bool need_filter = false;
-
-            if (lod > 0.007 && lod_radial > lod_tangent) {
-                need_filter = true;
-                lod = max(lod_radial * 0.25, lod_tangent);
+                            float refract4_a_fd = rotateC_fd*refract3_a_fd - rotateS_fd*refract3_b_fd;
+                            float refract4_b_fd = rotateS_fd*refract3_a_fd + rotateC_fd*refract3_b_fd;
+                            
+                            lod_refract4 = compute_lod(refract4_a, refract4_a_fd, refract4_b, refract4_b_fd, basis_V_z, basis_U_z, 1. / distance_2d);
+                        }
+                        
+                        {
+                            vec3 R = refract4_a*basis_V + refract4_b*basis_U;
+                            
+                            color_reflect_back = reflectance * (get_env_texture(R, 0.5*log2(lod_refract4) + 8.) + get_env_extra_light(R, sqrt(lod_refract4 + extra_light_blur_base*extra_light_blur_base)));
+                        }
+                    }
+                    
+                    {
+                        vec3 R = refract3_a*basis_V + refract3_b*basis_U;
+                        
+                        color_reflect_back += (1. - reflectance) * (get_env_texture(R, 0.5*log2(lod_refract3) + 8.) + get_env_extra_light(R, sqrt(lod_refract3 + extra_light_blur_base*extra_light_blur_base)));
+                    }
+                }
             }
-            
-            float lod_log2 = log2(lod) + 8.5;
-            
-            R2 = R2 * camera_rotate;
-            
-            vec3 c;
-            
-            if (need_filter) {
-                float r3 = coverage >= 0.995 ? -0.379853514087 : CUBIC(distance_from_edge_2d, -0.49693891, 0.27307575, -0.12086728, -0.04677587);
+        
+            // Sample the refracted ray, using more samples towards the edge.
+            {
+                float lod = 0.5*log2(lod_refract) + 8.;
+                float lod_extra = sqrt(lod_refract + extra_light_blur_base*extra_light_blur_base);
                 
-                vec3 R3 = get_refracted_ray(normalize(vec3(pix2d * (distance_2d + r3), base_z)));
+                float d = distance_2d / SPHERE_2D_RADIUS_PIXELS;
                 
-                c_r2 = get_env_texture(R1 * camera_rotate, lod_log2);
-                c_r2 += get_env_texture(R2, lod_log2);
-                c_r2 += get_env_texture(R3 * camera_rotate, lod_log2);
-                c_r2 *= 1./3.;
-            } else {
-                c_r2 = get_env_texture(R2, lod_log2);
-            }
-            
-            c_r2 += get_env_extra_light(R2, extra_lod);
-        }
-        
-        vec3 V3 = reflect(V2, -N2);
-        
-        vec3 N3;
-        
-        // Get light that reflects twice off the inside of the sphere.
-        {
-            vec3 P3 = intersect_sphere_inside(P2, V3);
-            N3 = normalize(P3);
-            
-            vec3 V4 = reflect(V3, -N3);
-            
-            vec3 N4 = normalize(intersect_sphere_inside(P3, V4));
-            
-            vec3 V_refract4 = refract(V4, -N4, IOR) * camera_rotate;
-            
-            float reflectance4 = fresnel_approx(dot(N4, V_refract4));
-            
-            color = get_env_texture(V_refract4, ENV_LOD_BASE + 6.*smoothstep(0.95*SPHERE_2D_RADIUS, 0.99*SPHERE_2D_RADIUS, target_r));
-            
-            color += get_env_extra_light(V_refract4, EXTRA_LIGHT_BLUR(1. + 16.*smoothstep(0.975*SPHERE_2D_RADIUS, SPHERE_2D_RADIUS, target_r)));
-            
-            color = mix(color, RESIDUAL_COLOR, reflectance4);
-        }
-        
-        // Get light that reflects once off the inside of the sphere.
-        {
-            vec3 V_refract3 = refract(V3, -N3, IOR);
-            
-            float reflectance3 = fresnel_approx(dot(N3, V_refract3));
-            
-            V_refract3 *= camera_rotate;
-            
-            vec3 c_r3 = get_env_texture(V_refract3, ENV_LOD_BASE + 6.*smoothstep(0.9*SPHERE_2D_RADIUS, 0.99*SPHERE_2D_RADIUS, target_r));
-            
-            c_r3 += get_env_extra_light(V_refract3, EXTRA_LIGHT_BLUR(1. + 32.*smoothstep(0.95*SPHERE_2D_RADIUS, SPHERE_2D_RADIUS, target_r)));
-            
-            color = mix(c_r3, color, reflectance3);
-        }
+                d = d*d;
+                
+                int max_count = 1 + int(clamp(ceil(5.*d), 1., 5.));
+                
+                float m = brightness_scale * (1. - reflectance);
 
-        float reflectance1 = fresnel_approx(-dot(N1, V1));
+                color_refract = sample_edge_refract(max_count, basis_scale, distance_2d, basis_U, basis_V, m, 
+                        lod - 2. * d, lod_extra / (1. + 0.5*d)
+                        );
+            }
+        }
         
+        // Blend the reflected and refracted background images with the images of the stars.
+        // Doing this last so less data needs to be kept in registers while the stars are being rendered.
         {
-            float transmittance1 = 1. - reflectance1;
+            float transmittance = 1. - reflectance;
             
-            float attenuation1 = brightness_scale*transmittance1;
-            float attenuation2 = attenuation1*reflectance1; // NOTE: reflectance2 = reflectance1, by symmetry
+            float attenuation1 = brightness_scale*transmittance;
+            float attenuation2 = attenuation1*reflectance;
                 
-            color = clamp(attenuation2 * color, 0., 1.);
-            c_r2 = clamp(attenuation1*transmittance1 * c_r2, 0., 1.); // NOTE: transmittance2 = transmittance1
+            color_reflect_back = clamp(attenuation2 * color_reflect_back, 0., 1.);
             
-            float dist1 = 10. + dot(P1, V1);
-            float dist2 = dist1 + dot(P2-P1, V2);
+            vec3 V0;
+            
+            {
+                float r2 = coverage >= 0.995 ? 0. : CUBIC(distance_from_edge_2d, -0.27758603, 0.56839415, -0.1731804, -0.1215896);
+                
+                V0 = vec3((1. + r2 / distance_2d) * pix2d, unnormalized_z);
+            }
             
             // Get the two images of the stars (refracted image, and image reflected in back of sphere)
             vec4 stars;
-            vec4 stars_reflection = render_stars(V0, dist1, dist2, P1, V2, P2, V3, camera_rotate, object_rotate,
+            vec4 stars_reflection = render_stars(V0, camera_rotate, object_rotate_angle,
                     attenuation1,
                     attenuation2,
                     stars);
             
-            color = ((1. - stars.a)*((1. - stars_reflection.a)*color + c_r2) + stars_reflection.rgb) + stars.rgb;
+            color += coverage * ((1. - stars.a)*(((1. - stars_reflection.a)*color_reflect_back + color_refract) + stars_reflection.rgb) + stars.rgb);
         }
-
-        {
-            float r2, r3;
-            
-            if (coverage >= 0.995) {
-                r2 = 0.2066932964;
-                r3 = 0.;
-            } else {
-                r2 = CUBIC(distance_from_edge_2d, -0.14703006, 0.73714146, -0.22155251, -0.17661499);
-                r3 = CUBIC(distance_from_edge_2d, -0.25833851, 0.57049487, -0.2073982, -0.12532421);
-            }
-            
-            float base_z = unnormalized_z * distance_2d;
-
-            vec3 R2 = get_reflected_ray(normalize(vec3(pix2d * (distance_2d + r2), base_z)));
-            vec3 R3 = get_reflected_ray(normalize(vec3(pix2d * (distance_2d + r3), base_z)));
-            
-            float lod_radial = distance(R2, R3) / (r2 - r3);
-            float lod_tangent = length(R2.xy)*angle;
-            
-            float lod = max(lod_radial, lod_tangent);
-            
-            float extra_lod = clamp(1. / (0.05 + lod), 2.5, 100.);
-
-            bool need_filter = false;
-
-            if (lod > 0.007 && lod_radial > lod_tangent) {
-                need_filter = true;
-                lod = max(lod_radial * 0.125, lod_tangent);
-            }
-            
-            float lod_log2 = log2(lod) + 8.5;
-
-            vec3 V = normalize(vec3(pix2d, unnormalized_z));
-            float d = max(0., dot(R3, V));
-            
-            R3 = R3 * camera_rotate;
-            
-            vec3 c;
-            
-            if (need_filter) {
-                float r1, r4, r5;
-                
-                if (coverage >= 0.995) {
-                    r1 = 0.4713567357;
-                    r4 = -0.2066932964;
-                    r5 = -0.4713567357;
-                } else {
-                    r1 = CUBIC(distance_from_edge_2d, -0.04151424, 0.92512037, -0.17387981, -0.19712453);
-                    r4 = CUBIC(distance_from_edge_2d, -0.38359305, 0.40577103, -0.16845084, -0.07745166);
-                    r5 = CUBIC(distance_from_edge_2d, -0.55745427, 0.20344302, -0.09462061, -0.03143261);
-                }
-                
-                vec3 R1 = get_reflected_ray(normalize(vec3(pix2d * (distance_2d + r1), base_z)));
-                vec3 R4 = get_reflected_ray(normalize(vec3(pix2d * (distance_2d + r4), base_z)));
-                vec3 R5 = get_reflected_ray(normalize(vec3(pix2d * (distance_2d + r5), base_z)));
-                
-                c = get_env_texture(R1 * camera_rotate, lod_log2);
-                c += get_env_texture(R2 * camera_rotate, lod_log2);
-                c += get_env_texture(R3, lod_log2);
-                c += get_env_texture(R4 * camera_rotate, lod_log2);
-                c += get_env_texture(R5 * camera_rotate, lod_log2);
-                c *= 1./5.;
-            } else {
-                c = get_env_texture(R3, lod_log2);
-            }
-            
-            vec3 extra = get_env_extra_light(R3, extra_lod);
-            
-            if (d > 0.85) {
-                vec3 rim = get_env_extra_light(V * camera_rotate, EXTRA_LIGHT_BLUR_BASE);
-                
-                extra = mix(extra, rim, pow(d, 32.));
-            }
-            
-            color = clamp(color + reflectance1*(c + extra), 0., 1.);
-        }
-    }
-    
-    // composite with background
-    if (coverage < 1.) {
-        vec3 V1 = normalize(vec3(pix2d, unnormalized_z));
-    
-        vec3 c = get_env(V1 * camera_rotate, 0., EXTRA_LIGHT_BLUR_BASE);
-        
-        color = mix(clamp(brightness_scale*c, 0., 1.), color, coverage);
     }
     
     fragColor = vec4(LINEAR_TO_SRGB(color), 1);
