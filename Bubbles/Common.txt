@@ -126,6 +126,12 @@
   Anyway, I will choose between using fmix32 and PCG in future shaders, but I think this non-optimized
   function is fine for making bubbles.
   
+  UPDATE: I found a better way to test these functions visually, which revealed the weakness in this 
+    function and in fmix32. No longer convinced that # of BigCrush failures is the best way to evaluate
+    these functions, since it indicated that xxHash32 is better than PCG, when actually it's worse (for
+    this type of application). I should write a blog article or something.
+    
+  
 */
 
 uint hash_fn1(uint h) {
