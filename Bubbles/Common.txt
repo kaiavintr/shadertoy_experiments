@@ -1,5 +1,5 @@
 /*
-    Copyright (C) 2023 Kaia Vintr
+    Copyright (C) 2023-2024 Kaia Vintr
     
     Code is licensed only for personal, non-commercial use on the Shadertoy
     website. You may not copy all or any part of the code into another Shadertoy
@@ -15,8 +15,12 @@
     invalid or unenforceable, that provision shall be limited to the minimum
     extent necessary, and the remaining provisions shall remain in full effect.
     
-    Please contact the copyright holder with questions or requests regarding
-    licensing, via DM to @KaiaVintr on Twitter or via a comment on this shader.
+    Please contact Kaia Vintr with questions regarding this code
+    via direct message to @kaiavintr.bsky.social on BlueSky (preferred)
+    or @KaiaVintr on Twitter, or via a comment on this shader in Shadertoy.
+    
+    Intended URL on the Shadertoy website:
+    https://www.shadertoy.com/view/DdfBDs
     
     Code is archived at:
     https://github.com/kaiavintr/shadertoy_experiments/tree/main/Bubbles
@@ -27,127 +31,110 @@
 // Set this to 1 to use only the extra "HDR" light, not the environment map texture
 #define BLACK_BACKGROUND 0
 
-#define BUBBLE_DENSITY 11
+const int BUBBLE_DENSITY = 11;
 
 // For default SPEED_X and PATH_CENTER values, this should be >= ~10*BUBBLE_DENSITY to avoid weird clipping.
 // Large values are slow (if bubble density is also high)
 // Values > 16000 or so will probably cause problems (but will be very slow anyway).
-#define MAX_BUBBLE_COUNT 1000
+const int MAX_BUBBLE_COUNT = 1000;
 
 // Normalized so 1 approximately matches the environment map's blur
 // Changing this value will probably make it look less realistic
 // Set to zero to disable depth of field blur completely
-#define APERTURE 1.
+const float APERTURE = 1.;
 
 // Probably shouldn't be 0 (unless you don't mind if hash(0)=0)
-#define HASH_SEED 0xfb1d484bu
+const uint HASH_SEED = 0xfb1d484bu;
 
 // Bubble radius range
-#define RADIUS_MIN 0.5
-#define RADIUS_MAX 7.
+const float RADIUS_MIN = 0.5;
+const float RADIUS_MAX = 7.;
 
 // cycle through different radii in the range, with this cycle length
-#define RADIUS_CYCLE_LENGTH 10.
+const float RADIUS_CYCLE_LENGTH = 10.;
 
 // Speed of the bubbles in the x direction 
-#define SPEED_X 10.
+const float SPEED_X = 10.;
 
 // Determines the far clip plane for the bubbles
-#define DISTANCE_MAX 1000.
+const float DISTANCE_MAX = 1000.;
 
 // Offset of the overall path of the bubbles.
 // Some parts of the code assume PATH_CENTER.x is 0
 // (no reason for it not to be 0, since it's an infinite cylinder aligned with the x-axis)
-#define PATH_CENTER vec3(0., 30., 3.)
+const vec3 PATH_CENTER = vec3(0., 30., 3.);
 
-#define YZ_SCATTER_RADIUS 50.
-#define YZ_MOVEMENT_RADIUS 40.
+const float YZ_SCATTER_RADIUS = 50.;
+const float YZ_MOVEMENT_RADIUS = 40.;
 
 
 // Parameters determining how the "auto-focus" works
 
 // Size of the bounding cylinder used to determine range of visible bubbles
-#define FOCUS_CYL_RADIUS 90.
+const float FOCUS_CYL_RADIUS = 90.;
 
 // Fraction of distance to edge of bounding cylinder to focus on
-#define FOCUS_FRACTION 0.4
+const float FOCUS_FRACTION = 0.4;
 
 // Bounds on the focus distance
-#define FOCUS_MIN 50.
-#define FOCUS_MAX 150.
+const float FOCUS_MIN = 50.;
+const float FOCUS_MAX = 150.;
 
 
 
 // 1 / tan(0.5*vertical_fov)
-#define VIEW_ANGLE_FACTOR 1.78
+const float VIEW_ANGLE_FACTOR = 1.78;
 
-#define BLOCK_SIZE 8.
-#define BLOCK_SHIFT 3
+// If 1, assume that the buffer is 16-bit floating point, so any bits stored in it
+//   need to survive the FP32 <-> FP16 round trip, i.e. approx. half as many bits can be stored.
+//   Two RGBA values are then needed for the acceleration data for each block, and
+//   everything needs to be calculated twice (because Shadertoy doesn't support multiple render
+//   targets). I tried using two buffers so second shader could pick up where the first left off,
+//   but it didn't seem to help performance overall and it was much more complicated.
+#define FP16_COMPATIBLE 1
+
+#if FP16_COMPATIBLE
+// Use larger block size (fewer tiles) for acceleration data because it needs to be calculated twice
+const float BLOCK_SIZE = 16.;
+const int BLOCK_SHIFT = 4;
+#else
+// Use more optimal block size
+const float BLOCK_SIZE = 8.;
+const int BLOCK_SHIFT = 3;
+#endif
+
 
 // Aperture value roughly matching the background, used to define APERTURE=1
-#define APERTURE_REFERENCE 0.01
+const float APERTURE_REFERENCE = 0.01;
 
 
+// For convenience when testing a specific time
 #define TIME iTime
 
 
-#define BUBBLE_ID_TIME_INCREMENT (1./float(BUBBLE_DENSITY))
+const float BUBBLE_ID_TIME_INCREMENT = (1./float(BUBBLE_DENSITY));
 
-#define PI 3.14159265358979
+const float PI = 3.14159265358979;
 
 
 
-/*
-  Derived by improving a basic LCG hash by trial and error.
-  Turns out to be similar to the fmix32() function from MurmurHash3, which is also used by
-  CityHash (and sometimes also called splitmix32).
-  
-  Unfortunately, fmix32 was not tested in the Jarzynski & Olano paper supplement, but I ran
-  the TestU01 BigCrush suite on it, using what I *think* is the same methodology, and it failed
-  52 "tests" (i.e. it had that many statistics outside the p-value range considered acceptable)
-  vs. 30 for PCG, 33 for ESGTSA, and 22 for xxHash32.
-  
-  My non-optimized version (using 0xadb4a92du, using >> 16 in all three places, adding the
-  constant 0xfb1d484bu) fails 68 tests, which means it's still substantially better than the cheap
-  1->1 hashes they tested other than PCG, ESGTSA, and xxHash32.
-  
-  Apparently some people have searched for other multipliers, and found some that work better when
-  the function is used for a seekable random number generator, but when I tested them they seemed
-  to perform worse than plain fmix32 with the Jarzynski & Olano methodology.
-  
-  This construction appears to be very slightly faster than PCG, but it will depend heavily on the
-    particular GPU and how the code gets optimized.
-  If you can omit the initial "h ^= h >> 16" (e.g. if you don't have any high bits set, or you have
-    already mixed the high bits into the low bits somehow) then it's faster by a more substantial margin.
-  I was speculating that the variable-size shift used by PCG might be slow on some GPUs but I have no
-    evidence for this (there's probably no reason it should be slow if it's implemented properly
-    in hardware, aside from the impact of introducing an extra data dependency into the pipeline).
-  
-  Anyway, I will choose between using fmix32 and PCG in future shaders, but I think this non-optimized
-  function is fine for making bubbles.
-  
-  UPDATE: I found a better way to test these functions visually, which revealed the weakness in this 
-    function and in fmix32. No longer convinced that # of BigCrush failures is the best way to evaluate
-    these functions, since it indicated that xxHash32 is better than PCG, when actually it's worse (for
-    this type of application). I should write a blog article or something.
-    
-  
-*/
-
+// Derived by improving a basic LCG hash by trial and error.
+// Caveat: I have not run any standard tests like the TestU01 suite on it (only tested by
+//   displaying XOR and AND of different pairs of output bits as pixels in a shader).
+// Turns out to be similar to CityHash's fmix() function, which unfortunately was
+//   not tested alone in the Jarzynski & Olano paper supplement.
 uint hash_fn1(uint h) {
 
     // Unnecessary in this shader, since only low bits are used in input
-    // Using += instead of ^= seemed to improve output when low and high bits are identical, but it makes
-    //   performance on the TestU01 tests substantially worse.
-    //h ^= h >> 16; 
+    // CityHash fmix() uses ^=, but += seems to improve output when low and high bits are identical.
+    //h += h >> 16; 
     
     // 0xadb4a92d is one of the multipliers from the Steele & Vigna 2021 paper
-    // fmix32() does not add a constant (but modifying it to add a constant did not degrade performance significantly)
     h = h*0xadb4a92du + HASH_SEED;
     
-    // If you skip this step, the following multiplication will do nothing structurally to improve the output,
-    //   since it will be equivalent to a single multiply and add
-    // fmix32() uses 13 here.
+    // If you skip this step, the following multiplication will do nothing to improve the output,
+    //      since the result will be the same as a single multiply and add.
+    // fmix() uses 13. I don't know if it makes a difference.
     h ^= h >> 16;
     
     // I don't know if there is any reason to use a different multiplier here, but I noticed that some
@@ -165,8 +152,6 @@ uint hash_fn1(uint h) {
 uint hash_fn2(uint h) {
     // I don't know if there is any reason to use a different multiplier here.
     // I don't know if adding a constant would help, other than for input 0 (which is not a concern here).
-    // I might use 0x8eae2659u instead in the future, since it gave better results when tested visually 
-    //   (when used as a standalone hash function) although it will still perform terribly on TestU01 tests.
     h = h*0xadb4a92du;
     
     // This step noticeably improves the quality of the output, but may make the code unsuitable for
