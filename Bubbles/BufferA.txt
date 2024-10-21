@@ -1,5 +1,5 @@
 /*
-    Copyright (C) 2023 Kaia Vintr
+    Copyright (C) 2023-2024 Kaia Vintr
     
     Code is licensed only for personal, non-commercial use on the Shadertoy
     website. You may not copy all or any part of the code into another Shadertoy
@@ -15,8 +15,12 @@
     invalid or unenforceable, that provision shall be limited to the minimum
     extent necessary, and the remaining provisions shall remain in full effect.
     
-    Please contact the copyright holder with questions or requests regarding
-    licensing, via DM to @KaiaVintr on Twitter or via a comment on this shader.
+    Please contact Kaia Vintr with questions regarding this code
+    via direct message to @kaiavintr.bsky.social on BlueSky (preferred)
+    or @KaiaVintr on Twitter, or via a comment on this shader in Shadertoy.
+    
+    Intended URL on the Shadertoy website:
+    https://www.shadertoy.com/view/DdfBDs
     
     Code is archived at:
     https://github.com/kaiavintr/shadertoy_experiments/tree/main/Bubbles
@@ -44,7 +48,7 @@ vec2 plane_bound(vec3 orig, vec3 direction, float radius, vec3 N) {
     }
 }
 
-uvec4 id_range_for_frustum(vec2 corner, mat3 camera) {
+uvec4 id_range_for_frustum(vec2 corner, mat3 camera, out uint w_sign) {
     float pixel_z = VIEW_ANGLE_FACTOR*iResolution.y;
     
     vec3 neighborhood_V;
@@ -163,6 +167,8 @@ uvec4 id_range_for_frustum(vec2 corner, mat3 camera) {
         }
     }
     
+    w_sign = 0u;
+    
     if ((idset.w & 0xffff0000u) != 0u) {
         if (idset.y == 0u) idset = uvec4(idset.zw, 0, 0);
         if (idset.x == 0u) idset = uvec4(idset.yzw, 0);
@@ -171,8 +177,10 @@ uvec4 id_range_for_frustum(vec2 corner, mat3 camera) {
         if (id_max != 0u) {
             uint second_last = idset.w & 0xffffu;
             
-            idset.w = (reversed ? (id_max | (second_last << 16)) 
-                    : (second_last | (id_max << 16))) | 0x80000000u;
+            idset.w = reversed ? (id_max | (second_last << 16))
+                               : (second_last | (id_max << 16));
+            
+            w_sign = 0x80000000u;
         }
     }
     
@@ -180,12 +188,34 @@ uvec4 id_range_for_frustum(vec2 corner, mat3 camera) {
 }
 
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
-    vec2 corner = floor(fragCoord) * BLOCK_SIZE;
+    #if FP16_COMPATIBLE
+    ivec2 coord = ivec2(fragCoord);
+    bool is_second_part = (coord.y & 1) != 0;
     
-    if (corner.x < iResolution.x && corner.y < iResolution.y) {
-        fragColor = uintBitsToFloat(id_range_for_frustum(corner - 0.5*iResolution.xy, make_camera(iMouse, iResolution)));
-    } else {
+    coord.y >>= 1;
+
+    vec2 corner = vec2(coord) * BLOCK_SIZE;
+    #else
+    vec2 corner = floor(fragCoord) * BLOCK_SIZE;
+    #endif
+
+    if (corner.x >= iResolution.x || corner.y >= iResolution.y) {
         fragColor = vec4(0);
+        return;
     }
+    
+    uint w_sign;
+    
+    uvec4 val = id_range_for_frustum(corner - 0.5*iResolution.xy, make_camera(iMouse, iResolution), w_sign);
+    
+    #if FP16_COMPATIBLE
+    val = ((is_second_part ? (val >> 16) : (val & 0x7fffu)) << 13) + 0x39000000u;
+    
+    if (is_second_part) val.w |= w_sign;
+    #else
+    val.w |= w_sign;
+    #endif
+    
+    fragColor = uintBitsToFloat(val);
 }
 
