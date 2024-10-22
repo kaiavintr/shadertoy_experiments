@@ -3,7 +3,8 @@
     
     Code is licensed only for personal, non-commercial use on the Shadertoy
     website. You may not copy all or any part of the code into another Shadertoy
-    shader. You may not distribute or use all or any part of the code outside of
+    shader (whether by using Shadertoy's "fork" feature or by some other means).
+    You may not distribute or use all or any part of the code outside of
     the Shadertoy website, even if the code is accessed via the Shadertoy API or
     web server. You may not use the code or its output to train or fine-tune
     machine learning models (e.g. "AI" models). You may not use the code to
@@ -17,16 +18,16 @@
     
     Please contact Kaia Vintr with questions regarding this code
     via direct message to @kaiavintr.bsky.social on BlueSky (preferred)
-    or @KaiaVintr on Twitter, or via a comment on this shader in Shadertoy.
+    or @KaiaVintr on Twitter, or via a comment on this shader.
     
-    Intended URL on the Shadertoy website:
+    URL of the Shadertoy website page where this code is intended to be used
+    (page for this "shader"):
     https://www.shadertoy.com/view/DdfBDs
     
     Code is archived at:
     https://github.com/kaiavintr/shadertoy_experiments/tree/main/Bubbles
     
 */
-
 
 #define MAX3(A, B, C) max(max(A, B), C)
 #define MAX6(A, B, C, D, E, F) max(MAX3(A, B, C), MAX3(D, E, F))
@@ -139,30 +140,36 @@ uvec4 id_range_for_frustum(vec2 corner, mat3 camera, out uint w_sign) {
         uint h;
         vec3 C = vec3(x, get_bubble_center_yz(offset_t, id, h));
         
-        float len_c = length(C);
+        float proj = dot(neighborhood_V, C);
         
-        float proj_min = dot(neighborhood_V, C) - len_c*neighborhood_radius;
-        float proj_max = dot(neighborhood_V, C) + len_c*neighborhood_radius;
-        
-        
-        float s_max = iResolution.y * (APERTURE * APERTURE_REFERENCE) / proj_min * max(proj_max - focus_distance, focus_distance - proj_min);
-        
-        float margin = -(radius + 0.75 * pix_scale * sqrt(1. + s_max*s_max) * proj_max);
-        
-        C = C * camera;
-        
-        if (C.z >= 0. && C.z <= DISTANCE_MAX
-                    && dot(C, N_left) > margin
-                    && dot(C, N_right) > margin
-                    && dot(C, N_bottom) > margin
-                    && dot(C, N_top) > margin
-                    ) {
-            id -= id_lower_bound;
+        if (proj > 0.) {
+            float len_c = length(C)*neighborhood_radius;
             
-            if ((idset.x & 0xffffu) == 0u) {
-                idset = (idset >> 16) | uvec4(idset.yzw << 16, id << 16);
-            } else {
-                id_max = id;
+            float proj_min = proj - len_c;
+
+            if (proj_min > 0.1) {
+                float proj_max = proj + len_c;
+                
+                float s_max = iResolution.y * (APERTURE * APERTURE_REFERENCE) / proj_min * max(proj_max - focus_distance, focus_distance - proj_min);
+                
+                float margin = -(radius + 0.75 * pix_scale * sqrt(1. + s_max*s_max) * proj_max);
+                
+                C = C * camera;
+                
+                if (C.z >= 0. && C.z <= DISTANCE_MAX
+                            && dot(C, N_left) > margin
+                            && dot(C, N_right) > margin
+                            && dot(C, N_bottom) > margin
+                            && dot(C, N_top) > margin
+                            ) {
+                    id -= id_lower_bound;
+                    
+                    if ((idset.x & 0xffffu) == 0u) {
+                        idset = (idset >> 16) | uvec4(idset.yzw << 16, id << 16);
+                    } else {
+                        id_max = id;
+                    }
+                }
             }
         }
     }
