@@ -3,7 +3,8 @@
     
     Code is licensed only for personal, non-commercial use on the Shadertoy
     website. You may not copy all or any part of the code into another Shadertoy
-    shader. You may not distribute or use all or any part of the code outside of
+    shader (whether by using Shadertoy's "fork" feature or by some other means).
+    You may not distribute or use all or any part of the code outside of
     the Shadertoy website, even if the code is accessed via the Shadertoy API or
     web server. You may not use the code or its output to train or fine-tune
     machine learning models (e.g. "AI" models). You may not use the code to
@@ -17,16 +18,16 @@
     
     Please contact Kaia Vintr with questions regarding this code
     via direct message to @kaiavintr.bsky.social on BlueSky (preferred)
-    or @KaiaVintr on Twitter, or via a comment on this shader in Shadertoy.
+    or @KaiaVintr on Twitter, or via a comment on this shader.
     
-    Intended URL on the Shadertoy website:
+    URL of the Shadertoy website page where this code is intended to be used
+    (page for this "shader"):
     https://www.shadertoy.com/view/DdfBDs
     
     Code is archived at:
     https://github.com/kaiavintr/shadertoy_experiments/tree/main/Bubbles
     
 */
-
 
 // Set this to 1 to use only the extra "HDR" light, not the environment map texture
 #define BLACK_BACKGROUND 0
