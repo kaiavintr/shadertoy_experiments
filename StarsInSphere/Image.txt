@@ -1,9 +1,10 @@
 /*
-    Copyright (C) 2023 Kaia Vintr
+    Copyright (C) 2023-2024 Kaia Vintr
     
     Code is licensed only for personal, non-commercial use on the Shadertoy
     website. You may not copy all or any part of the code into another Shadertoy
-    shader. You may not distribute or use all or any part of the code outside of
+    shader (whether by using Shadertoy's "fork" feature or by some other means).
+    You may not distribute or use all or any part of the code outside of
     the Shadertoy website, even if the code is accessed via the Shadertoy API or
     web server. You may not use the code or its output to train or fine-tune
     machine learning models (e.g. "AI" models). You may not use the code to
@@ -15,8 +16,13 @@
     invalid or unenforceable, that provision shall be limited to the minimum
     extent necessary, and the remaining provisions shall remain in full effect.
     
-    Please contact the copyright holder with questions or requests regarding
-    licensing, via DM to @KaiaVintr on Twitter or via a comment on this shader.
+    Please contact Kaia Vintr with questions regarding this code
+    via direct message to @kaiavintr.bsky.social on BlueSky (preferred)
+    or @KaiaVintr on Twitter, or via a comment on this shader.
+    
+    URL of the Shadertoy website page where this code is intended to be used
+    (page for this "shader"):
+    https://www.shadertoy.com/view/ddsyD8
     
     Code is archived at:
     https://github.com/kaiavintr/shadertoy_experiments/tree/main/StarsInSphere
@@ -239,84 +245,6 @@ float sdf_five_pointed_star(vec2 p, out vec2 grad) {
 
     return d;
 }
-
-// First three "columns" (they look like rows due to GLSL order) are the tangent space basis vectors and normal.
-// xy in last column gives offset of star's center in tangent space coordinates.
-// z in last column gives offset of plane along the normal vector (the "D" coefficient in the plane equation).
-const mat4x3 STARS[STAR_COUNT] = mat4x3[STAR_COUNT](
-    mat4x3(
-        0.0747976264, -0.4432925061, -0.8932508434,
-        0.4215545650, -0.7977277940, 0.4311868684,
-        -0.9037129322, -0.4088057250, 0.1272038341,
-        -0.4636508376, -0.7654421872, 0.8456977434
-    ),
-    mat4x3(
-        0.1790759708, 0.4357879753, -0.8820547814,
-        -0.9804421624, 0.0046517838, -0.1967524515,
-        -0.0816392243, 0.9000373334, 0.4280979275,
-        -0.6719893608, -0.5175045296, -0.4731132150
-    ),
-    mat4x3(
-        0.9697109375, 0.1645909032, 0.1804730789,
-        0.1946901810, -0.9670274597, -0.1641755937,
-        0.1475006138, 0.1943392053, -0.9697813373,
-        0.7037491881, -0.3275285124, 0.8318283940
-    ),
-    mat4x3(
-        -0.3697212759, 0.1692339841, -0.9136005893,
-        0.5608725239, 0.8245672100, -0.0742356253,
-        0.7407618983, -0.5398599585, -0.3997787328,
-        -0.5305283634, 0.5790930253, 0.8505740099
-    ),
-    mat4x3(
-        -0.8550630110, 0.1092595458, 0.5068822337,
-        0.1847844916, -0.8491610533, 0.4947526627,
-        0.4844811027, 0.5167086773, 0.7058967375,
-        -1.0333914250, 0.0500283917, -0.3733988204
-    ),
-    mat4x3(
-        0.2505587094, -0.5297768348, -0.8102819500,
-        0.1821140353, -0.7962447661, 0.5769131222,
-        -0.9508179696, -0.2921143230, -0.1030262638,
-        0.5734411988, -0.3517091725, 1.0495497625
-    ),
-    mat4x3(
-        -0.8966523048, 0.3897169637, 0.2100841081,
-        -0.4362233556, -0.8587535806, -0.2687963389,
-        0.0756559870, -0.3326604514, 0.9400070190,
-        0.4468056904, -0.8759400460, 0.6265304320
-    ),
-    mat4x3(
-        0.3995004344, -0.2737086627, 0.8749188367,
-        0.3777527250, -0.8204446695, -0.4291543115,
-        0.8352857485, 0.5019503086, -0.2243738087,
-        0.0155802972, -0.2372086799, 0.2590125724
-    ),
-    mat4x3(
-        0.7047288583, 0.6885660900, -0.1709794605,
-        -0.2234384839, -0.0133286170, -0.9746268988,
-        -0.6733739527, 0.7250510931, 0.1444591022,
-        0.2146140387, 1.1332494812, -0.0141624732
-    ),
-    mat4x3(
-        -0.9792978716, -0.1947197345, -0.0553163970,
-        0.1982234336, -0.9778575026, -0.0670982490,
-        -0.0410262006, -0.0766741786, 0.9962117853,
-        0.3145082210, 0.1407346730, 1.2011874963
-    ),
-    mat4x3(
-        0.1503253522, 0.0860645358, -0.9848833353,
-        -0.8244477075, -0.5388712000, -0.1729271737,
-        -0.5456081617, 0.8379801462, -0.0100502937,
-        0.4901633781, -0.8108669729, 0.7456087551
-    ),
-    mat4x3(
-        0.5563685684, 0.6248822169, 0.5477008592,
-        0.7957638943, -0.5904317243, -0.1347226914,
-        0.2391941486, 0.5107960395, -0.8257563595,
-        -0.5911739375, 0.0630130729, -0.8339310871
-    )
-);
 
 float distance_to_plane(vec3 start, vec3 N, float dotVN, float offset) {
     return (-offset - dot(N, start))/dotVN;
@@ -541,7 +469,111 @@ vec4 render_stars(vec3 V0, mat3 camera_rotate, float object_rotate_angle,
         
         // Get all of the vectors defining the star position and orientation
         //   (not really used as a matrix)
-        mat4x3 star = STARS[i + i_offset];
+        // First three "columns" (they look like rows due to GLSL order) are the tangent space basis vectors and normal.
+        // xy in last column gives offset of star's center in tangent space coordinates.
+        // z in last column gives offset of plane along the normal vector (the "D" coefficient in the plane equation).
+
+        mat4x3 star;
+    
+        // Use switch statement instead of array because a) iOS Safari's implementation (and presumably others) do not
+        //   support arrays of matrices, and b) this approach speeds up the code dramatically on my Intel iGPU.
+        switch(i + i_offset) {
+        case 0:
+            star = mat4x3(
+                0.0747976264, -0.4432925061, -0.8932508434,
+                0.4215545650, -0.7977277940, 0.4311868684,
+                -0.9037129322, -0.4088057250, 0.1272038341,
+                -0.4636508376, -0.7654421872, 0.8456977434
+            );
+            break;
+        case 1:
+            star = mat4x3(
+                0.1790759708, 0.4357879753, -0.8820547814,
+                -0.9804421624, 0.0046517838, -0.1967524515,
+                -0.0816392243, 0.9000373334, 0.4280979275,
+                -0.6719893608, -0.5175045296, -0.4731132150
+            );
+            break;
+        case 2:
+            star = mat4x3(
+                0.9697109375, 0.1645909032, 0.1804730789,
+                0.1946901810, -0.9670274597, -0.1641755937,
+                0.1475006138, 0.1943392053, -0.9697813373,
+                0.7037491881, -0.3275285124, 0.8318283940
+            );
+            break;
+        case 3:
+            star = mat4x3(
+                -0.3697212759, 0.1692339841, -0.9136005893,
+                0.5608725239, 0.8245672100, -0.0742356253,
+                0.7407618983, -0.5398599585, -0.3997787328,
+                -0.5305283634, 0.5790930253, 0.8505740099
+            );
+            break;
+        case 4:
+            star = mat4x3(
+                -0.8550630110, 0.1092595458, 0.5068822337,
+                0.1847844916, -0.8491610533, 0.4947526627,
+                0.4844811027, 0.5167086773, 0.7058967375,
+                -1.0333914250, 0.0500283917, -0.3733988204
+            );
+            break;
+        case 5:
+            star = mat4x3(
+                0.2505587094, -0.5297768348, -0.8102819500,
+                0.1821140353, -0.7962447661, 0.5769131222,
+                -0.9508179696, -0.2921143230, -0.1030262638,
+                0.5734411988, -0.3517091725, 1.0495497625
+            );
+            break;
+        case 6:
+            star = mat4x3(
+                -0.8966523048, 0.3897169637, 0.2100841081,
+                -0.4362233556, -0.8587535806, -0.2687963389,
+                0.0756559870, -0.3326604514, 0.9400070190,
+                0.4468056904, -0.8759400460, 0.6265304320
+            );
+            break;
+        case 7:
+            star = mat4x3(
+                0.3995004344, -0.2737086627, 0.8749188367,
+                0.3777527250, -0.8204446695, -0.4291543115,
+                0.8352857485, 0.5019503086, -0.2243738087,
+                0.0155802972, -0.2372086799, 0.2590125724
+            );
+            break;
+        case 8:
+            star = mat4x3(
+                0.7047288583, 0.6885660900, -0.1709794605,
+                -0.2234384839, -0.0133286170, -0.9746268988,
+                -0.6733739527, 0.7250510931, 0.1444591022,
+                0.2146140387, 1.1332494812, -0.0141624732
+            );
+            break;
+        case 9:
+            star = mat4x3(
+                -0.9792978716, -0.1947197345, -0.0553163970,
+                0.1982234336, -0.9778575026, -0.0670982490,
+                -0.0410262006, -0.0766741786, 0.9962117853,
+                0.3145082210, 0.1407346730, 1.2011874963
+            );
+            break;
+        case 10:
+            star = mat4x3(
+                0.1503253522, 0.0860645358, -0.9848833353,
+                -0.8244477075, -0.5388712000, -0.1729271737,
+                -0.5456081617, 0.8379801462, -0.0100502937,
+                0.4901633781, -0.8108669729, 0.7456087551
+            );
+            break;
+        default:
+            star = mat4x3(
+                0.5563685684, 0.6248822169, 0.5477008592,
+                0.7957638943, -0.5904317243, -0.1347226914,
+                0.2391941486, 0.5107960395, -0.8257563595,
+                -0.5911739375, 0.0630130729, -0.8339310871
+            );
+        }
         
         // Center of star (also center of bounding sphere)
         vec3 Cp = -star[3].x*star[0] - star[3].y*star[1] - star[3].z*star[2];
