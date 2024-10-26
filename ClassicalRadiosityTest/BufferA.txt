@@ -22,7 +22,7 @@
     
     URL of the Shadertoy website page where this code is intended to be used
     (page for this "shader"):
-    https://www.shadertoy.com/view/43BfRK
+    https://www.shadertoy.com/view/lX2BDV
     
     Code is archived at:
     https://github.com/kaiavintr/shadertoy_experiments/tree/main/ClassicalRadiosityTest
@@ -33,7 +33,7 @@
 
 // Since this is the first pass, it only needs to gathers light from the light source (not from all surfaces).
 
-
+// iChannel1 contains sphere and light locations (BufferD)
 
 vec3 get_point_for_patch(vec3 sphere_c, int index, float f_row, float f_column, out vec3 N) {
     if (index < MESH_OFFSET_SPHERE) {

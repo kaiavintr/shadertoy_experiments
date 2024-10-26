@@ -22,7 +22,7 @@
     
     URL of the Shadertoy website page where this code is intended to be used
     (page for this "shader"):
-    https://www.shadertoy.com/view/43BfRK
+    https://www.shadertoy.com/view/lX2BDV
     
     Code is archived at:
     https://github.com/kaiavintr/shadertoy_experiments/tree/main/ClassicalRadiosityTest
@@ -40,7 +40,7 @@
 // I'm wary of moving complex code into functions (especially passing textures as parameters, as Shadertoy forces you to do with Common
 //      functions) because of problems with WebGL shader compilation in Windows.
 
-// iChannel0 is output of previous pass, i.e. BufferC
+// iChannel0 is output of previous pass (BufferC)
 // iChannel1 is previous content of BufferD
 // iChannel2 is output of first pass, i.e. BufferA (not required if USE_SERIES_ACCELERATION is 0)
 // output of second pass is not used for series acceleration
@@ -510,7 +510,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
            It might seem like cheating, or deviating from physically-based methods, but the justification is that the result is a better
                 approximation (in the least squares sense) of true radiosity than simply stopping after 4 iterations, and it's similar to
                 (but better than) overrelaxation, which is a standard technique (with caveat that this might be only true for certain scenes,
-                and different factors might be needed for different scenes).
+                and different factors might be needed for different scenes). Likely it should be combined with heuristics.
         
            Optimal factors in my test scene (for reference, probably not useful):
                 1 iteration (i.e. just uniformly brightening the direct illumination): 1.55648131

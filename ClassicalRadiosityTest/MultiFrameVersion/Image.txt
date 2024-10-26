@@ -22,7 +22,7 @@
     
     URL of the Shadertoy website page where this code is intended to be used
     (page for this "shader"):
-    (to be added)
+    https://www.shadertoy.com/view/lX2fDy
     
     Code is archived at:
     https://github.com/kaiavintr/shadertoy_experiments/tree/main/ClassicalRadiosityTest/MultiFrameVersion
