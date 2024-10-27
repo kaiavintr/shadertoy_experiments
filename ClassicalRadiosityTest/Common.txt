@@ -41,8 +41,9 @@
 
 // This must be 8, 16, 32, or 64
 //      16 is the default
-//      32 should be ok if you have a fast GPU
+//      32 should be ok if you have a fast GPU (may freeze your phone or iGPU)
 //      64 will be slow even on a high-end GPU (will likely freeze your phone or iGPU, and won't work correctly for 16-bit float buffers)
+// Note: Doubling this number multiplies the work required by 16!
 #define MESH_SIZE 16
 
 #define SHOW_LIGHT_SOURCE 1
