@@ -84,8 +84,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         ivec2 val = floatBitsToInt(texelFetch(iChannel1, ivec2(BUFFER_D_LIGHT_DATA, BUFFER_D_MISC_DATA_ROW), 0).xy);
         
         light_side = unpack_light_side(val.x);
-        light_i_minmax = unpack_light_minmax(val.x);
-        light_j_minmax = unpack_light_minmax(val.y);
+        light_i_minmax = unpack_light_i_minmax(val.x);
+        light_j_minmax = unpack_light_j_minmax(val.y);
         
         light_side_base = light_side*MESH_COUNT_SQUARE;
     }

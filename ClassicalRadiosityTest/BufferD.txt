@@ -85,12 +85,12 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
                     ival = pack_light_info(LIGHT_SIDE_INITIAL, LIGHT_I_MINMAX_INITIAL, LIGHT_J_MINMAX_INITIAL);
                 } else {
                     #if MORE_RANDOM_LIGHT_POSITIONS
-                    uint h = hash_fn1(uint(iDate.w*1024.0));
+                    int h = int(hash_fn1(uint(iDate.w*1024.0)));
                     #else
-                    uint h = hash_fn1(uint(seqnum));
+                    int h = int(hash_fn1(uint(seqnum)));
                     #endif
                     
-                    int side = int(h&63u);
+                    int side = h & 63;
                     
                     // Getting value mod 5 (probably a silly way to do it)
                     if (side >= 40) side -= 40;
@@ -98,8 +98,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
                     if (side >= 10) side -= 10;
                     if (side >= 5) side -= 5;
                     
-                    ivec2 ivals = ivec2((h>>6)&15u, (h>>10)&15u);
-                    ivec2 jvals = ivec2((h>>14)&15u, (h>>18)&15u);
+                    ivec2 ivals = ivec2((h>>6)&(MESH_SQUARE_ROWS-1), (h>>(6 + MESH_SQUARE_SHIFT))&(MESH_SQUARE_ROWS-1));
+                    ivec2 jvals = ivec2((h>>(6 + 2*MESH_SQUARE_SHIFT))&(MESH_SQUARE_COLUMNS-1), (h>>(6 + 3*MESH_SQUARE_SHIFT))&(MESH_SQUARE_COLUMNS-1));
                     
                     if (ivals.x > ivals.y) ivals = ivals.yx;
                     if (jvals.x > jvals.y) jvals = jvals.yx;
@@ -345,7 +345,11 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 
             ivec2 row_and_col = get_row_and_column(false, index_src - base_src);
 
-            row_and_col.x += base_src >> 4;
+            // Shifting right by MESH_SQUARE_SHIFT gives the y part of a patch index, which happens to be the texture x offset
+            //      here because number of rows and columns is the same in the square meshes
+            // (Code should be refactored to detect when index_src has moved to the next mesh, and call more expensive functions
+            //      to get both base_src and texture x offset, so they can be arbitrary.)
+            row_and_col.x += base_src >> MESH_SQUARE_SHIFT;
 
             // get outbound flux for patch (radiosity times patch area)
             vec3 rad = texelFetch(iChannel0, row_and_col, 0).rgb;
@@ -419,7 +423,11 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 
             ivec2 row_and_col = get_row_and_column(false, index_src - base_src);
 
-            row_and_col.x += base_src >> 4;
+            // Shifting right by MESH_SQUARE_SHIFT gives the y part of a patch index, which happens to be the texture x offset
+            //      here because number of rows and columns is the same in the square meshes
+            // (Code should be refactored to detect when index_src has moved to the next mesh, and call more expensive functions
+            //      to get both base_src and texture x offset, so they can be arbitrary.)
+            row_and_col.x += base_src >> MESH_SQUARE_SHIFT;
 
             // get outbound flux for patch (radiosity times patch area)
             vec3 rad = texelFetch(iChannel0, row_and_col, 0).rgb;
@@ -464,8 +472,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
             ivec2 val = floatBitsToInt(texelFetch(iChannel1, ivec2(BUFFER_D_LIGHT_DATA, BUFFER_D_MISC_DATA_ROW), 0).xy);
             
             light_side = unpack_light_side(val.x);
-            light_i_minmax = unpack_light_minmax(val.x);
-            light_j_minmax = unpack_light_minmax(val.y);
+            light_i_minmax = unpack_light_i_minmax(val.x);
+            light_j_minmax = unpack_light_j_minmax(val.y);
         }
         
         if (base == light_side*MESH_COUNT_SQUARE && x >= light_j_minmax.x && x <= light_j_minmax.y && y >= light_i_minmax.x && y <= light_i_minmax.y) {

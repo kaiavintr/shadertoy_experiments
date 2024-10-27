@@ -39,6 +39,12 @@
 // (B-spline avoids ringing artifacts but I think it blurs the shadows too much, and Mitchell-Netravali doesn't seem to help much)
 #define INTERPOLATION CATMULL_ROM
 
+// This must be 8, 16, 32, or 64
+//      16 is the default
+//      32 should be ok if you have a fast GPU
+//      64 will be slow even on a high-end GPU (will likely freeze your phone or iGPU, and won't work correctly for 16-bit float buffers)
+#define MESH_SIZE 16
+
 #define SHOW_LIGHT_SOURCE 1
 
 // NOTE: series acceleration is disabled if these are not all set to 1
@@ -51,7 +57,7 @@
 //  (will be missing light in places not reached by the first two or three bounces, but it will look much closer to the specified albedo)
 #define USE_SERIES_ACCELERATION 1
 
-// Bounds on the amount of extra light added (as fraction of difference between final two passes) so the series acceleration can't go too wildly off the rails
+// Bounds on the amount of extra light added (as multiple of difference between final two passes) so the series acceleration can't go too wildly off the rails
 // I looked at a scatter plot of the error divided by delta, and 1-4 appeared to be a reasonable range.
 #define USE_SERIES_ACCELERATION_SAFETY_BOUNDS_MIN 1.
 #define USE_SERIES_ACCELERATION_SAFETY_BOUNDS_MAX 4.
@@ -69,21 +75,17 @@ const vec3 SPHERE_ALBEDO = vec3(0.95, 0.05, 0.1);
 #endif
 
 // This value will be divided by number of patches that cover the light
-const vec3 LIGHT_AMOUNT = vec3(150.);
+const vec3 LIGHT_AMOUNT = vec3(0.586 * float(MESH_SIZE*MESH_SIZE));
 
 // interval (seconds) between switching light position randomly
 const float LIGHT_CHANGE_INTERVAL = 4.;
 
-#if 1
-// initial light position (in case you want to test some specific position)
+// Initial light position (in case you want to test some specific position)
+// i and j ranges are inclusive (values should be in range 0...MESH_SIZE-1 or 0...MESH_SIZE-1)
 const int LIGHT_SIDE_INITIAL = 3; // 0=left, 1=right, 2=bottom, 3=top, 4=back
-const ivec2 LIGHT_I_MINMAX_INITIAL = ivec2(6, 9); // inclusive (values should be in range 0...15)
-const ivec2 LIGHT_J_MINMAX_INITIAL = ivec2(6, 9); // inclusive (values should be in range 0...15)
-#else
-const int LIGHT_SIDE_INITIAL = 4; // 0=left, 1=right, 2=bottom, 3=top, 4=back
-const ivec2 LIGHT_I_MINMAX_INITIAL = ivec2(14, 15); // inclusive (values should be in range 0...15)
-const ivec2 LIGHT_J_MINMAX_INITIAL = ivec2(14, 15); // inclusive (values should be in range 0...15)
-#endif
+const ivec2 LIGHT_I_MINMAX_INITIAL = ivec2((MESH_SIZE>>1) - (MESH_SIZE>>3), (MESH_SIZE>>1) + (MESH_SIZE>>3) - 1);
+const ivec2 LIGHT_J_MINMAX_INITIAL = ivec2((MESH_SIZE>>1) - (MESH_SIZE>>3), (MESH_SIZE>>1) + (MESH_SIZE>>3) - 1);
+
 
 #if BOUNCY == 0 // using low velocity and low gravity for sphere ("floaty"?)
 
@@ -108,6 +110,7 @@ const vec3 SPHERE_INITIAL_VELOCITY = vec3(-1.75, 2.384, 1.183);
 const float GRAVITY = -2.7;
 
 #endif
+
 
 // if 1, use a hash of iDate.w so the light positions will be different in each run
 #define MORE_RANDOM_LIGHT_POSITIONS 1
@@ -137,6 +140,8 @@ const uint HASH_SEED = 0x85d59261u;
 const float PATCH_FLUX_ENCODE_SCALE = 1024.;
 const float PATCH_FLUX_DECODE_SCALE = 1./PATCH_FLUX_ENCODE_SCALE;
 
+#define FP16_BUFFER_COMPATIBLE (MESH_SIZE < 64)
+
 
 // Nothing below this point is configurable
 
@@ -151,20 +156,48 @@ const float PATCH_FLUX_DECODE_SCALE = 1./PATCH_FLUX_ENCODE_SCALE;
 
 const float PI = 3.141592653589793;
 
-// Mesh sizes can't be changed, sorry!
 
+/*
+    Mesh size restrictions in the code:
+        Sizes are powers of 2
+        For squares, number of rows and columns must be same
+        Spheres must have same number of rows as squares
+        Number of columns for spheres is twice the number of rows
+*/
+#if MESH_SIZE == 8
+const int MESH_SQUARE_ROWS = 8;
+const int MESH_SQUARE_COLUMNS = 8;
+const int MESH_SQUARE_SHIFT = 3; // Always same for rows and columns, currently
+const int MESH_SPHERE_ROWS = 8;
+const int MESH_SPHERE_COLUMNS = 16;
+#elif MESH_SIZE == 32
+const int MESH_SQUARE_ROWS = 32;
+const int MESH_SQUARE_COLUMNS = 32;
+const int MESH_SQUARE_SHIFT = 5; // Always same for rows and columns, currently
+const int MESH_SPHERE_ROWS = 32;
+const int MESH_SPHERE_COLUMNS = 64;
+#elif MESH_SIZE == 64
+const int MESH_SQUARE_ROWS = 64;
+const int MESH_SQUARE_COLUMNS = 64;
+const int MESH_SQUARE_SHIFT = 6; // Always same for rows and columns, currently
+const int MESH_SPHERE_ROWS = 64;
+const int MESH_SPHERE_COLUMNS = 128;
+#else // default to 16
 const int MESH_SQUARE_ROWS = 16;
 const int MESH_SQUARE_COLUMNS = 16;
-
-const int MESH_COUNT_SQUARE = MESH_SQUARE_ROWS*MESH_SQUARE_COLUMNS;
-
+const int MESH_SQUARE_SHIFT = 4; // Always same for rows and columns, currently
 const int MESH_SPHERE_ROWS = 16;
 const int MESH_SPHERE_COLUMNS = 32;
+#endif
+
+const int MESH_SPHERE_ROW_SHIFT = MESH_SQUARE_SHIFT + 1;
+
+const int MESH_COUNT_SQUARE = MESH_SQUARE_ROWS*MESH_SQUARE_COLUMNS;
+const int MESH_COUNT_SPHERE = MESH_SPHERE_ROWS*MESH_SPHERE_COLUMNS;
 
 const float SQUARE_PATCH_RECIPROCAL_AREA = float(MESH_SQUARE_ROWS * MESH_SQUARE_COLUMNS);
 const float SQUARE_PATCH_AREA = 1. / SQUARE_PATCH_RECIPROCAL_AREA;
 
-const int MESH_COUNT_SPHERE = MESH_SPHERE_ROWS*MESH_SPHERE_COLUMNS;
 
 // Much of the code uses contiguous indexes for mesh patches (1D rather than 2D)
 const int MESH_OFFSET_LEFT = 0;
@@ -218,14 +251,14 @@ const int BUFFER_B_AND_C_ROW_COUNT = MESH_SQUARE_ROWS;
 
 
 int get_mesh_base_index(int index) {
-    return min(index & ~0xff, MESH_OFFSET_SPHERE);
+    return min(index & ~(MESH_COUNT_SQUARE-1), MESH_OFFSET_SPHERE);
 }
 
 ivec2 get_row_and_column(bool is_sphere, int offset) {
-    int columns_shift = is_sphere ? 5 : 4;
-    int columns_mask = is_sphere ? 31 : 15;
+    int columns_mask = is_sphere ? (MESH_SPHERE_COLUMNS-1) : (MESH_SQUARE_COLUMNS-1);
+    int row_shift = is_sphere ? MESH_SPHERE_ROW_SHIFT : MESH_SQUARE_SHIFT;
 
-    return ivec2(offset & columns_mask, offset >> columns_shift);
+    return ivec2(offset & columns_mask, offset >> row_shift);
 }
 
 // Although a contiguous range of indexes is used for all patches, most of the code is specialized to
@@ -363,7 +396,7 @@ float form_factor_no_sphere_check(vec3 P1, vec3 P2, vec3 N1, vec3 N2) {
 
 float area_for_patch(int index) {
     if (index >= MESH_OFFSET_SPHERE) {
-        float row = float((index - MESH_OFFSET_SPHERE) >> 5);
+        float row = float((index - MESH_OFFSET_SPHERE) >> MESH_SPHERE_ROW_SHIFT);
 
         float theta1 = PI*(-0.5 + 1./float(MESH_SPHERE_ROWS)*row);
         float theta2 = PI*(-0.5 + 1./float(MESH_SPHERE_ROWS)*(row + 1.));
@@ -378,17 +411,39 @@ float area_for_patch(int index) {
 // Need to make sure no data is stored in bits that will be lost during conversion to/from 16-bit float,
 //      also making sure that the bit pattern is not a NaN, or infinity, or denormal when converted to 16-bit
 
+#if FP16_BUFFER_COMPATIBLE
 ivec2 pack_light_info(int side_num, ivec2 i_minmax, ivec2 j_minmax) {
-    return (ivec2(side_num | (i_minmax.x << 3) | ((i_minmax.y&15) << 7), (j_minmax.x << 3) | ((j_minmax.y&15) << 7)) << 13) | 0x40000000;
+    return (ivec2(side_num | (i_minmax.x << 3) | (i_minmax.y << 8), (j_minmax.x << 3) | (j_minmax.y << 8)) << 13) | 0x40000000;
 }
 
 int unpack_light_side(int val) {
     return (val >> 13) & 7;
 }
 
-ivec2 unpack_light_minmax(int val) {
-    return ivec2((val >> 16) & 15, (val >> 20) & 15);
+ivec2 unpack_light_i_minmax(int val) {
+    return ivec2((val >> 16) & (MESH_SQUARE_ROWS-1), (val >> 21) & (MESH_SQUARE_ROWS-1));
 }
+
+ivec2 unpack_light_j_minmax(int val) {
+    return ivec2((val >> 16) & (MESH_SQUARE_COLUMNS-1), (val >> 21) & (MESH_SQUARE_COLUMNS-1));
+}
+#else
+ivec2 pack_light_info(int side_num, ivec2 i_minmax, ivec2 j_minmax) {
+    return ivec2(side_num | (i_minmax.x << 3) | (i_minmax.y << 11), (j_minmax.x << 3) | (j_minmax.y << 11)) | 0x40000000;
+}
+
+int unpack_light_side(int val) {
+    return val & 7;
+}
+
+ivec2 unpack_light_i_minmax(int val) {
+    return ivec2((val >> 3) & (MESH_SQUARE_ROWS-1), (val >> 11) & (MESH_SQUARE_ROWS-1));
+}
+
+ivec2 unpack_light_j_minmax(int val) {
+    return ivec2((val >> 3) & (MESH_SQUARE_COLUMNS-1), (val >> 11) & (MESH_SQUARE_COLUMNS-1));
+}
+#endif
 
 float get_light_scale(ivec2 i_minmax, ivec2 j_minmax) { // i.e. divide by number of patches covered by light
     return 1. / float((i_minmax.y - i_minmax.x + 1)*(j_minmax.y - j_minmax.x + 1));

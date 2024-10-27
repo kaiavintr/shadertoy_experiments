@@ -497,8 +497,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         ivec2 val = floatBitsToInt(texelFetch(iChannel0, ivec2(BUFFER_D_LIGHT_DATA, BUFFER_D_MISC_DATA_ROW), 0).zw);
         
         int light_side = unpack_light_side(val.x);
-        ivec2 light_i_minmax = unpack_light_minmax(val.x);
-        ivec2 light_j_minmax = unpack_light_minmax(val.y);
+        ivec2 light_i_minmax = unpack_light_i_minmax(val.x);
+        ivec2 light_j_minmax = unpack_light_j_minmax(val.y);
         
         // Get intersection of view ray with the plane containing the light
         // (re-doing this to save the shader code from having to keep those
@@ -532,8 +532,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
             light_i_minmax.y++;
             light_j_minmax.y++;
             
-            vec2 minmax_i = 1./16. * vec2(light_i_minmax);
-            vec2 minmax_j = 1./16. * vec2(light_j_minmax);
+            vec2 minmax_i = 1./float(MESH_SQUARE_ROWS) * vec2(light_i_minmax);
+            vec2 minmax_j = 1./float(MESH_SQUARE_COLUMNS) * vec2(light_j_minmax);
             
             // anti-alias edges if we need to
             if (coord.x < minmax_j.x || coord.x > minmax_j.y || coord.y < minmax_i.x || coord.y > minmax_i.y) {
