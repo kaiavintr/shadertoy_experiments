@@ -46,6 +46,9 @@ const int MAX_BUBBLE_COUNT = 1000;
 // Set to zero to disable depth of field blur completely
 const float APERTURE = 1.;
 
+// "beta" parameter for boring tone mapper
+const float TONE_MAP_BETA = 5.;
+
 // Probably shouldn't be 0 (unless you don't mind if hash(0)=0)
 const uint HASH_SEED = 0xfb1d484bu;
 

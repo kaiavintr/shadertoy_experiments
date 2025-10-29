@@ -61,6 +61,8 @@
 // If you change this value, it will take a few frames to fix.
 #define USE_SERIES_ACCELERATION 0
 
+// "beta" parameter for boring tone mapper
+const float TONE_MAP_BETA = 5.;
 
 // color and albedo of the surfaces
 const vec3 ROOM_ALBEDO = vec3(0.85);

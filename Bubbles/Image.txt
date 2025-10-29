@@ -55,24 +55,25 @@ float rgb_to_luminance(vec3 c) {
 
 // Shift energy from clipped color components into other components, but don't modify representable colors
 // Avoids unexpected cyan, yellow, and magenta pixels and tries to use correct luminance even if color is out of gamut
-vec3 gamut_clip(vec3 c) {
-    float maxcomp = max(max(c.r, c.g), c.b);
+vec3 tone_map_and_gamut_clip(vec3 rgb) {
+    float a = max(rgb_to_luminance(rgb), 0.);
     
-    if (maxcomp <= 1.005) {
-        return c;
-    } else {
-        float target_luminance = rgb_to_luminance(c);
-        
-        vec3 representable = c / maxcomp;
-        
-        float representable_luminance = rgb_to_luminance(representable);
-        
-        // Find a color that is a linear blend between brightest representable color with same chroma + saturation as c, and white,
-        //      and has same luminance as c (target_luminance).
-        // If target_luminance >= 1. white will be used.
-        // (1.00001 could probably be safely changed to 1. in GLSL) 
-        return mix(c, vec3(1), clamp((target_luminance - representable_luminance) / (1.00001 - representable_luminance), 0., 1.));
+    // "boring" tone mapper that tries to keep the lower values linear
+    {
+        float k = (log(exp(TONE_MAP_BETA) - 1.)) / TONE_MAP_BETA;
+    
+        a = 1. - log(1. + exp(TONE_MAP_BETA*(k - a))) / TONE_MAP_BETA;
     }
+    
+    if (a < 0.001) return vec3(0);
+    
+    rgb = max(rgb, vec3(0));
+    
+    rgb /= max(max(rgb.r, rgb.g), rgb.b); // can't be all 0s, because then a < 0.001
+    
+    float b = min(rgb_to_luminance(rgb), 0.9999);
+    
+    return max((rgb - b) * (a <= b ? a / b : (1. - a) / (1. - b)) + a, vec3(0));
 }
 
 #define SR(C, R, T) smoothstep(C-(R), C+(R), T)
@@ -547,5 +548,5 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     
     vec3 color = transm1*(transm2*(transm3*background + color3) + color2) + color1;
     
-    fragColor = vec4(LINEAR_TO_SRGB(gamut_clip(brightness*color)), 1.);
+    fragColor = vec4(LINEAR_TO_SRGB(tone_map_and_gamut_clip(brightness*color)), 1.);
 }
