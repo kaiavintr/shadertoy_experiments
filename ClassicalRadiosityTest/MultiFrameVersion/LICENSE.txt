@@ -1,0 +1,17 @@
+LICENSE:
+
+Code is licensed only for personal, non-commercial use on the Shadertoy
+website. You may not copy all or any part of the code into another Shadertoy
+shader (whether by using Shadertoy's "fork" feature or by some other means).
+You may not distribute or use all or any part of the code outside of
+the Shadertoy website, even if the code is accessed via the Shadertoy API or
+web server. You may not use the code or its output to train or fine-tune
+machine learning models (e.g. "AI" models). You may not use the code to
+create image or video content for publication or distribution, except
+screenshots or brief video clips of the output of the unmodified code to be
+used strictly in a manner that would be permitted as "fair use" under U.S.
+copyright law and with attribution to Kaia Vintr (for example, you may not
+use the code to create NFTs or YouTube videos). If any provision of these
+license terms is held to be invalid or unenforceable, that provision shall
+be limited to the minimum extent necessary, and the remaining provisions
+shall remain in full effect.

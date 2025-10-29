@@ -1,6 +1,7 @@
 /*
-    Copyright (C) 2023-2024 Kaia Vintr
+    Copyright (C) 2023-2025 Kaia Vintr
     
+    LICENSE:
     Code is licensed only for personal, non-commercial use on the Shadertoy
     website. You may not copy all or any part of the code into another Shadertoy
     shader (whether by using Shadertoy's "fork" feature or by some other means).
@@ -11,14 +12,15 @@
     create image or video content for publication or distribution, except
     screenshots or brief video clips of the output of the unmodified code to be
     used strictly in a manner that would be permitted as "fair use" under U.S.
-    copyright law (for example, you may not use the code to create NFTs or
-    YouTube videos). If any provision of these license terms is held to be
-    invalid or unenforceable, that provision shall be limited to the minimum
-    extent necessary, and the remaining provisions shall remain in full effect.
+    copyright law and with attribution to Kaia Vintr (for example, you may not
+    use the code to create NFTs or YouTube videos). If any provision of these
+    license terms is held to be invalid or unenforceable, that provision shall
+    be limited to the minimum extent necessary, and the remaining provisions
+    shall remain in full effect.
     
     Please contact Kaia Vintr with questions regarding this code
-    via direct message to @kaiavintr.bsky.social on BlueSky (preferred)
-    or @KaiaVintr on Twitter, or via a comment on this shader.
+    via direct message to @kaiavintr.bsky.social on Bluesky (preferred)
+    or @KaiaVintr on X (use only if necessary), or via a comment on this shader.
     
     URL of the Shadertoy website page where this code is intended to be used
     (page for this "shader"):
@@ -427,7 +429,7 @@ vec4 render_stars(vec3 V0, mat3 camera_rotate, float object_rotate_angle,
     Vdx = refract(Vdx, normalize(Pdx), R_IOR);
     Vdy = refract(Vdy, normalize(Pdy), R_IOR);
     
-    float scaled_aperture = APERTURE * iResolution.y;
+    float scaled_aperture = APERTURE * min(iResolution.x, iResolution.y);
 
     // Cheap order-independent transparency
     vec4 color = vec4(0);
@@ -1017,10 +1019,10 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 
     get_scene_rotation(camera_rotate, object_rotate_angle, brightness_scale);
     
-    float SPHERE_2D_RADIUS_PIXELS = SPHERE_2D_RADIUS * VIEW_ANGLE_FACTOR * iResolution.y;
+    float SPHERE_2D_RADIUS_PIXELS = SPHERE_2D_RADIUS * VIEW_ANGLE_FACTOR * min(iResolution.x, iResolution.y);
     
     vec2 pix2d = fragCoord.xy - 0.5*iResolution.xy;
-    float unnormalized_z = VIEW_ANGLE_FACTOR*iResolution.y;
+    float unnormalized_z = VIEW_ANGLE_FACTOR*min(iResolution.x, iResolution.y);
     
     float distance_2d = length(pix2d);
    
@@ -1101,7 +1103,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
                 reflectance = fresnel_approx(a);
                 
                 // Compute a good base value for the blur distance for the extra "HDR" light
-                extra_light_blur_base = 0.03 * max(450. / iResolution.y, 1.);
+                extra_light_blur_base = 0.03 * max(450. / min(iResolution.x, iResolution.y), 1.);
                 
                 // Use heuristic to decide how many samples to take of reflected rays (higher at edge of sphere).
                 

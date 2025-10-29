@@ -1,6 +1,7 @@
 /*
-    Copyright (C) 2024 Kaia Vintr
+    Copyright (C) 2024-2025 Kaia Vintr
     
+    LICENSE:
     Code is licensed only for personal, non-commercial use on the Shadertoy
     website. You may not copy all or any part of the code into another Shadertoy
     shader (whether by using Shadertoy's "fork" feature or by some other means).
@@ -11,14 +12,15 @@
     create image or video content for publication or distribution, except
     screenshots or brief video clips of the output of the unmodified code to be
     used strictly in a manner that would be permitted as "fair use" under U.S.
-    copyright law (for example, you may not use the code to create NFTs or
-    YouTube videos). If any provision of these license terms is held to be
-    invalid or unenforceable, that provision shall be limited to the minimum
-    extent necessary, and the remaining provisions shall remain in full effect.
+    copyright law and with attribution to Kaia Vintr (for example, you may not
+    use the code to create NFTs or YouTube videos). If any provision of these
+    license terms is held to be invalid or unenforceable, that provision shall
+    be limited to the minimum extent necessary, and the remaining provisions
+    shall remain in full effect.
     
     Please contact Kaia Vintr with questions regarding this code
-    via direct message to @kaiavintr.bsky.social on BlueSky (preferred)
-    or @KaiaVintr on Twitter, or via a comment on this shader.
+    via direct message to @kaiavintr.bsky.social on Bluesky (preferred)
+    or @KaiaVintr on X (use only if necessary), or via a comment on this shader.
     
     URL of the Shadertoy website page where this code is intended to be used
     (page for this "shader"):

@@ -1,6 +1,7 @@
 /*
-    Copyright (C) 2023-2024 Kaia Vintr
+    Copyright (C) 2023-2025 Kaia Vintr
     
+    LICENSE:
     Code is licensed only for personal, non-commercial use on the Shadertoy
     website. You may not copy all or any part of the code into another Shadertoy
     shader (whether by using Shadertoy's "fork" feature or by some other means).
@@ -11,14 +12,15 @@
     create image or video content for publication or distribution, except
     screenshots or brief video clips of the output of the unmodified code to be
     used strictly in a manner that would be permitted as "fair use" under U.S.
-    copyright law (for example, you may not use the code to create NFTs or
-    YouTube videos). If any provision of these license terms is held to be
-    invalid or unenforceable, that provision shall be limited to the minimum
-    extent necessary, and the remaining provisions shall remain in full effect.
+    copyright law and with attribution to Kaia Vintr (for example, you may not
+    use the code to create NFTs or YouTube videos). If any provision of these
+    license terms is held to be invalid or unenforceable, that provision shall
+    be limited to the minimum extent necessary, and the remaining provisions
+    shall remain in full effect.
     
     Please contact Kaia Vintr with questions regarding this code
-    via direct message to @kaiavintr.bsky.social on BlueSky (preferred)
-    or @KaiaVintr on Twitter, or via a comment on this shader.
+    via direct message to @kaiavintr.bsky.social on Bluesky (preferred)
+    or @KaiaVintr on X (use only if necessary), or via a comment on this shader.
     
     URL of the Shadertoy website page where this code is intended to be used
     (page for this "shader"):
@@ -228,7 +230,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     float pix_scale, bg_extra_light_r, brightness, focus_distance;
     
     {
-        vec3 V0 = vec3(fragCoord.xy - 0.5*iResolution.xy, VIEW_ANGLE_FACTOR*iResolution.y);
+        vec3 V0 = vec3(fragCoord.xy - 0.5*iResolution.xy, VIEW_ANGLE_FACTOR * min(iResolution.x, iResolution.y));
         
         pix_scale = 1./length(V0);
     
@@ -300,7 +302,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     vec3 color2 = vec3(0), transm2 = vec3(1);
     vec3 color3 = vec3(0), transm3 = vec3(1);
     
-    float extra_light_blur_base = 0.03 * max(450. / iResolution.y, 1.);
+    float extra_light_blur_base = 0.03 * max(450. / min(iResolution.x, iResolution.y), 1.);
     
     for (uint i = 0u; i < visit_count; i++) {
         uint id;
@@ -343,7 +345,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
             
             float conf = APERTURE * APERTURE_REFERENCE * abs(proj - focus_distance) / proj;
             
-            float blur_amount = iResolution.y * conf;
+            float blur_amount = min(iResolution.x, iResolution.y) * conf;
 
             blur_amount = sqrt(1. + blur_amount*blur_amount);
             
@@ -479,7 +481,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
                         float texture_lod = log2(lod) + 8.;
                         float extra_light_blur = sqrt(lod*lod + extra_light_blur_base*extra_light_blur_base);
 
-                        float scaled_conf = iResolution.y * conf;
+                        float scaled_conf = min(iResolution.x, iResolution.y) * conf;
 
                         if (scaled_conf * scaled_conf > 1.) {
                             env_front = get_env(refl_front, texture_lod, extra_light_blur);
