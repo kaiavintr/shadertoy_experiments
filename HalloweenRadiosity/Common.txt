@@ -199,6 +199,10 @@ const float UVSPHERE_MAX_THETA = 1.;
 
 const float PI = 3.141592653589793;
 
+// For avoiding 0/0 in places where +/- inf is acceptable
+float REMOVE_ZEROS(float x) {
+    return x != 0. ? x : 1e-20;
+}
 
 // Parameters for stalk shapes that are the same for all three
 const float STALK_BIAS = -0.055;
@@ -1405,7 +1409,7 @@ vec2 cone_intersection(vec3 ray_O, vec3 V, vec3 D, float A, float B) {
 
 
 vec2 slab_nearfar_raw(float c1, float c2, float rV) {
-    return vec2(c1 * rV, c2 * rV);
+    return vec2(REMOVE_ZEROS(c1) * rV, REMOVE_ZEROS(c2) * rV);
 }
 
 vec2 vec2_sort(vec2 v) {
