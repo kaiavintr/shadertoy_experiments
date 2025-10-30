@@ -22,6 +22,10 @@
     via direct message to @kaiavintr.bsky.social on Bluesky (preferred)
     or @KaiaVintr on X (use only if necessary), or via a comment on this shader.
     
+    URL of the Shadertoy website page where this code is intended to be used
+    (page for this "shader"):
+    https://www.shadertoy.com/view/3XXfDS
+    
     Code is archived at:
     https://github.com/kaiavintr/shadertoy_experiments/tree/main/HalloweenRadiosity
     
